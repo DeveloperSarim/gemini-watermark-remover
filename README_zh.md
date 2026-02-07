@@ -1,6 +1,6 @@
 [English](README.md)
 
-# Gemini 无损去水印工具 - [banana.ovo.re](https://banana.ovo.re)
+# Gemini 无损去水印工具 - [remover.sarimtools.com](https://remover.sarimtools.com)
 
 基于 Javascript 的纯浏览器端 Gemini AI 图像无损去水印工具，使用数学精确的反向 Alpha 混合算法
 
@@ -51,13 +51,13 @@
 > 作者对任何形式的数据丢失、图像损坏或非预期的修改结果不承担法律责任。使用本工具即代表您已了解并接受上述风险。
 
 > [!NOTE]
-> 另请注意：使用此工具需禁用 Canvas 指纹防护扩展（如 Canvas Fingerprint Defender），否则可能会导致处理结果错误。 https://github.com/journey-ad/gemini-watermark-remover/issues/3
+> 另请注意：使用此工具需禁用 Canvas 指纹防护扩展（如 Canvas Fingerprint Defender），否则可能会导致处理结果错误。 https://github.com/DeveloperSarim/issues/3
 
 ## 使用方法
 
 ### 在线使用
 
-1. 浏览器打开 [banana.ovo.re](https://banana.ovo.re)
+1. 浏览器打开 [remover.sarimtools.com](https://remover.sarimtools.com)
 2. 拖拽或点击选择带水印的 Gemini 图片
 3. 图片会自动开始处理，移除水印
 4. 下载处理后的图片
@@ -65,7 +65,7 @@
 ### 油猴脚本
 
 1. 安装油猴插件（如 Tampermonkey 或 Greasemonkey）
-2. 打开 [gemini-watermark-remover.user.js](https://banana.ovo.re/userscript/gemini-watermark-remover.user.js)
+2. 打开 [gemini-watermark-remover.user.js](https://remover.sarimtools.com/userscript/gemini-watermark-remover.user.js)
 3. 脚本会自动安装到浏览器中
 4. Gemini 对话页面点击复制或者下载图片时，会自动移除水印
 

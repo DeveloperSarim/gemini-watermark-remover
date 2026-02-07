@@ -1,6 +1,6 @@
 {
-  "title": "Gemini Watermark Remover - Gemini 无损去水印工具",
-  "header.title": "Gemini Watermark Remover",
+  "title": "Remover By Sarim Tools - Gemini 无损去水印工具",
+  "header.title": "Remover By Sarim Tools",
   "nav.userscript": "安装油猴脚本",
   "nav.principle": "去水印原理",
   "main.title": "Gemini AI 图像去水印",
@@ -29,7 +29,7 @@
   "footer.terms": "使用条款",
   "footer.github": "GitHub",
   "footer.tech": "技术",
-  "footer.copyright": "© {{year}} Gemini Watermark Remover. All rights reserved.",
+  "footer.copyright": "© {{year}} Remover By Sarim Tools. All rights reserved.",
   "loading.text": "正在处理...",
   "status.loading": "正在加载资源...",
   "status.pending": "等待处理...",

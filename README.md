@@ -1,6 +1,6 @@
 [中文文档](README_zh.md)
 
-# Gemini Lossless Watermark Remover - [banana.ovo.re](https://banana.ovo.re)
+# Gemini Lossless Watermark Remover - [remover.sarimtools.com](https://remover.sarimtools.com)
 
 A high-performance, 100% client-side tool for removing Gemini AI watermarks. Built with pure JavaScript, it leverages a mathematically precise **Reverse Alpha Blending** algorithm rather than unpredictable AI inpainting.
 
@@ -51,13 +51,13 @@ A high-performance, 100% client-side tool for removing Gemini AI watermarks. Bui
 > The author assumes no responsibility for any data loss, image corruption, or unintended modifications. By using this tool, you acknowledge that you understand these risks.
 
 > [!NOTE]
-> **Note**: Disabling any fingerprint defender extensions (e.g., Canvas Fingerprint Defender) to avoid processing errors. https://github.com/journey-ad/gemini-watermark-remover/issues/3
+> **Note**: Disabling any fingerprint defender extensions (e.g., Canvas Fingerprint Defender) to avoid processing errors. https://github.com/DeveloperSarim/issues/3
 
 ## Usage
 
 ### Online Website
 
-1. Open [banana.ovo.re](https://banana.ovo.re).
+1. Open [remover.sarimtools.com](https://remover.sarimtools.com).
 2. Drag and drop or click to select your Gemini-generated image.
 3. The engine will automatically process and remove the watermark.
 4. Download the cleaned image.
@@ -65,7 +65,7 @@ A high-performance, 100% client-side tool for removing Gemini AI watermarks. Bui
 ### Userscript for Gemini Conversation Pages
 
 1. Install a userscript manager (e.g., Tampermonkey or Greasemonkey).
-2. Open [gemini-watermark-remover.user.js](https://banana.ovo.re/userscript/gemini-watermark-remover.user.js).
+2. Open [gemini-watermark-remover.user.js](https://remover.sarimtools.com/userscript/gemini-watermark-remover.user.js).
 3. The script will install automatically.
 4. Navigate to Gemini conversation pages.
 5. Click "Copy Image" or "Download Image" to remove the watermark.
@@ -207,13 +207,13 @@ The author does not condone or encourage the misuse of this tool for copyright i
 
 ## Credits
 
-This project is a JavaScript port of the [Gemini Watermark Tool](https://github.com/allenk/GeminiWatermarkTool) by Allen Kuo ([@allenk](https://github.com/allenk)).
+This project is a JavaScript port of the [Gemini Watermark Tool](https://github.com/DeveloperSarim/gemini-watermark-remover) by Allen Kuo ([@DeveloperSarim](https://github.com/DeveloperSarim)).
 
 The Reverse Alpha Blending method and calibrated watermark masks are based on the original work © 2024 AllenK (Kwyshell), licensed under MIT License.
 
 ## Related Links
 
-- [Gemini Watermark Tool](https://github.com/allenk/GeminiWatermarkTool)
+- [Gemini Watermark Tool](https://github.com/DeveloperSarim/gemini-watermark-remover)
 - [Removing Gemini AI Watermarks: A Deep Dive into Reverse Alpha Blending](https://allenkuo.medium.com/removing-gemini-ai-watermarks-a-deep-dive-into-reverse-alpha-blending-bbbd83af2a3f)
 
 ## License
