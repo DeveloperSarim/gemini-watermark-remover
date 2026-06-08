@@ -133,6 +133,12 @@ If you do not have `gwr` installed globally, use:
 pnpm dlx @pilio/gemini-watermark-remover remove <input> --output <file>
 ```
 
+The default CLI file decoder/encoder uses `sharp`. SDK consumers that only use browser or `ImageData` APIs do not need it. If you use the CLI file path in your own project, install `sharp` alongside this package:
+
+```bash
+pnpm add sharp
+```
+
 ### Can't Remove Your Watermark?
 
 This tool targets Gemini's visible watermark (the semi-transparent logo in the bottom-right corner). If your image watermark doesn't match a known Gemini format, or you need to remove other types of image watermarks, try the general-purpose AI watermark remover:
@@ -257,7 +263,8 @@ const result = await removeWatermarkFromBuffer(inputBuffer, {
 
 ### CLI And Skill
 
-- a local Node.js runtime capable of running this package and its dependencies
+- a local Node.js runtime capable of running this package
+- `sharp` installed when using the default CLI file decoder/encoder
 - filesystem access for local input/output paths
 - for repo-local usage:
 

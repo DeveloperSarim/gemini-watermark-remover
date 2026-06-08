@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.20 - 2026-06-09
+
+### SDK
+
+- Moved `sharp` out of hard runtime dependencies and into an optional peer so browser consumers do not install the native Node image codec unless they need the CLI default codec.
+- Documented that CLI users should install `sharp` when they want the built-in file decoder/encoder path.
+
 ## 1.0.19 - 2026-06-09
 
 ### SDK

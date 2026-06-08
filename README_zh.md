@@ -133,6 +133,12 @@ gwr remove <input> [--output <file> | --out-dir <dir>] [--overwrite] [--json]
 pnpm dlx @pilio/gemini-watermark-remover remove <input> --output <file>
 ```
 
+默认 CLI 文件解码/编码路径使用 `sharp`。只使用浏览器或 `ImageData` SDK 的消费者不需要它。如果你在自己的项目里使用 CLI 文件处理，请同时安装 `sharp`：
+
+```bash
+pnpm add sharp
+```
+
 ### 去不掉的水印？
 
 本工具专门针对 Gemini 可见水印（右下角半透明 Logo）。如果你的图片水印不属于 Gemini 已知格式，或需要去除其他类型的图片水印，可以试试通用 AI 去水印工具：
@@ -257,7 +263,8 @@ const result = await removeWatermarkFromBuffer(inputBuffer, {
 
 ### CLI 与 Skill
 
-- 能运行本包及其依赖的本地 Node.js 环境
+- 能运行本包的本地 Node.js 环境
+- 使用默认 CLI 文件解码/编码路径时需要安装 `sharp`
 - 可读写本地输入/输出路径的文件系统环境
 - 在仓库内可直接使用：
 

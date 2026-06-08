@@ -7,10 +7,6 @@ settings:
 importers:
 
   .:
-    dependencies:
-      sharp:
-        specifier: ^0.34.5
-        version: 0.34.5
     devDependencies:
       '@types/node':
         specifier: ^24.6.0
@@ -21,6 +17,9 @@ importers:
       playwright:
         specifier: ^1.58.2
         version: 1.58.2
+      sharp:
+        specifier: ^0.34.5
+        version: 0.34.5
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
