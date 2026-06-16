@@ -4,6 +4,10 @@ import {
     computeRegionSpatialCorrelation
 } from '../core/adaptiveDetector.js';
 import { resolveVideoWatermarkCandidates } from './videoWatermarkCatalog.js';
+import {
+    computeRectangularSpatialCorrelation,
+    detectVeoTextWatermarkFromFrames
+} from './veoTextWatermarkDetector.js';
 
 const DEFAULT_MIN_CONFIDENCE = 0.18;
 const DEFAULT_ALPHA_SEED_GAIN = 1;
@@ -217,10 +221,30 @@ function scoreCandidateOnFrame(imageData, candidate, alphaMapOptions = {}) {
 }
 
 export function scoreVideoWatermarkFrame(imageData, position, alphaMap) {
+    const width = position.width ?? position.size;
+    const height = position.height ?? position.size;
+    if (width !== height || alphaMap.length !== width * width) {
+        const spatial = computeRectangularSpatialCorrelation({
+            imageData,
+            alphaMap,
+            region: {
+                x: position.x,
+                y: position.y,
+                width,
+                height
+            }
+        });
+        return {
+            spatial,
+            gradient: 0,
+            confidence: Math.max(0, spatial)
+        };
+    }
+
     const region = {
         x: position.x,
         y: position.y,
-        size: position.width ?? position.size
+        size: width
     };
     const spatial = computeRegionSpatialCorrelation({ imageData, alphaMap, region });
     const gradient = computeRegionGradientCorrelation({ imageData, alphaMap, region });
@@ -741,7 +765,7 @@ function summarizeCandidate(scores) {
     };
 }
 
-export function detectVideoWatermarkFromFrames({
+export function detectDiamondVideoWatermarkFromFrames({
     frames,
     width,
     height,
@@ -818,6 +842,7 @@ export function detectVideoWatermarkFromFrames({
     );
 
     return {
+        watermarkKind: 'diamond',
         position,
         alphaMap,
         alphaSeed,
@@ -851,6 +876,87 @@ export function detectVideoWatermarkFromFrames({
             frameWinners
         }
     };
+}
+
+export function selectVideoWatermarkDetection({
+    diamondDetection = null,
+    veoTextDetection = null,
+    diamondWeakConfidenceCeiling = 0.28
+} = {}) {
+    const diamondBestConfidence = diamondDetection?.summary?.best?.meanConfidence ?? 0;
+    const veoBestNcc = veoTextDetection?.summary?.best?.meanNcc ?? 0;
+    const veoStrong = veoTextDetection?.isConfident === true;
+    const diamondStrong = diamondDetection?.isConfident === true;
+
+    if (veoStrong && (!diamondStrong || diamondBestConfidence < diamondWeakConfidenceCeiling || veoBestNcc > diamondBestConfidence)) {
+        return {
+            ...veoTextDetection,
+            summary: {
+                ...veoTextDetection.summary,
+                alternatives: {
+                    diamond: diamondDetection?.summary?.best ?? null
+                }
+            }
+        };
+    }
+
+    if (diamondDetection) {
+        return {
+            ...diamondDetection,
+            summary: {
+                ...diamondDetection.summary,
+                alternatives: {
+                    veoText: veoTextDetection?.summary?.best ?? null,
+                    veoTextCandidates: veoTextDetection?.summary?.candidates ?? []
+                }
+            }
+        };
+    }
+
+    return veoTextDetection;
+}
+
+export function detectVideoWatermarkFromFrames({
+    frames,
+    width,
+    height,
+    candidates = resolveVideoWatermarkCandidates(width, height),
+    minConfidence = DEFAULT_MIN_CONFIDENCE,
+    alphaMapOptions = {},
+    veoTextOptions = {}
+}) {
+    let diamondDetection = null;
+    if (Array.isArray(candidates) && candidates.length > 0) {
+        diamondDetection = detectDiamondVideoWatermarkFromFrames({
+            frames,
+            width,
+            height,
+            candidates,
+            minConfidence,
+            alphaMapOptions
+        });
+    }
+
+    const veoTextDetection = detectVeoTextWatermarkFromFrames({
+        frames,
+        width,
+        height,
+        ...veoTextOptions
+    });
+
+    const selected = selectVideoWatermarkDetection({
+        diamondDetection,
+        veoTextDetection
+    });
+
+    if (!selected) {
+        if (!Array.isArray(candidates) || candidates.length === 0) {
+            throw new Error(`暂不支持 ${width}x${height} 的视频水印候选`);
+        }
+        throw new Error('没有可用的视频水印检测结果');
+    }
+
+    return selected;
 }
 
 export { getVideoAlphaMap };

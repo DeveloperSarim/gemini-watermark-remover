@@ -8,6 +8,8 @@ const DEFAULT_AUTO_SAMPLE_COUNT = 12;
 const DEFAULT_AUTO_ALPHA_GAIN = 1;
 const DEFAULT_AUTO_AI_EDGE_DENOISE_STRENGTH = 1.8;
 const DEFAULT_AUTO_AI_RESIDUAL_CLEANUP_STRENGTH = 0.4;
+const DEFAULT_VEO_TEXT_AI_EDGE_DENOISE_STRENGTH = 1.45;
+const DEFAULT_VEO_TEXT_AI_RESIDUAL_CLEANUP_STRENGTH = 0.9;
 
 export function isRelocatedVideoWatermarkPosition(position) {
     if (!position || !Number.isFinite(position.width) || position.width <= 0) {
@@ -82,9 +84,21 @@ export function getStandardAutoPresetConfig() {
     };
 }
 
+export function getVeoTextAutoPresetConfig() {
+    return {
+        ...getStandardAutoPresetConfig(),
+        id: 'veo-text-auto',
+        edgeDenoiseStrength: DEFAULT_VEO_TEXT_AI_EDGE_DENOISE_STRENGTH,
+        residualCleanupStrength: DEFAULT_VEO_TEXT_AI_RESIDUAL_CLEANUP_STRENGTH
+    };
+}
+
 export function getAutomaticVideoPresetConfig(detection = null, metadata = null) {
     if (shouldUseRelocatedReviewPreset(detection, metadata)) {
         return getRelocatedReviewPresetConfig();
+    }
+    if (detection?.watermarkKind === 'veo-text') {
+        return getVeoTextAutoPresetConfig();
     }
     return getStandardAutoPresetConfig();
 }

@@ -39,6 +39,8 @@ test('export-video-ui-preset source clicks the relocated review preset button', 
   const source = readFileSync(new URL('../../scripts/export-video-ui-preset.js', import.meta.url), 'utf8');
 
   assert.match(source, /PRESET_BUTTON_SELECTOR = '#relocatedReviewPresetBtn'/);
-  assert.match(source, /locator\(PRESET_BUTTON_SELECTOR\)\.click\(\)/);
+  assert.match(source, /withLocalStaticPreviewPage/);
+  assert.match(source, /clickPresetButton/);
+  assert.match(source, /document\.querySelector\(selector\)\?\.click\(\)/);
   assert.match(source, /locator\('#processBtn'\)\.click\(\)/);
 });

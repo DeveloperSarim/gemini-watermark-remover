@@ -231,12 +231,13 @@ function createGraphProto({
     segments,
     inputName,
     outputName,
-    roiSize
+    roiWidth,
+    roiHeight
 }) {
     const initializers = createInitializers({ bin, segments });
     const nodes = createNodes({ segments, inputName, outputName });
-    const inputShape = [1, segments[0].inputChannels, roiSize, roiSize];
-    const outputShape = [1, segments[segments.length - 1].outputChannels, roiSize, roiSize];
+    const inputShape = [1, segments[0].inputChannels, roiHeight, roiWidth];
+    const outputShape = [1, segments[segments.length - 1].outputChannels, roiHeight, roiWidth];
 
     return {
         nodeCount: nodes.length,
@@ -275,6 +276,8 @@ function exportAllenkFdncnnOnnx({
     bin,
     weightLayout,
     roiSize = 72,
+    roiWidth = roiSize,
+    roiHeight = roiSize,
     inputName = 'fdncnn_input',
     outputName = 'fdncnn_output',
     graphName = 'allenk_fdncnn_color',
@@ -285,8 +288,11 @@ function exportAllenkFdncnnOnnx({
     if (!segments.length) {
         throw new Error('allenk FDnCNN ONNX export requires weightLayout.segments');
     }
-    if (!Number.isInteger(roiSize) || roiSize <= 0) {
-        throw new Error(`Invalid ONNX ROI size: ${roiSize}`);
+    if (!Number.isInteger(roiWidth) || roiWidth <= 0) {
+        throw new Error(`Invalid ONNX ROI width: ${roiWidth}`);
+    }
+    if (!Number.isInteger(roiHeight) || roiHeight <= 0) {
+        throw new Error(`Invalid ONNX ROI height: ${roiHeight}`);
     }
 
     const graph = createGraphProto({
@@ -295,7 +301,8 @@ function exportAllenkFdncnnOnnx({
         segments,
         inputName,
         outputName,
-        roiSize
+        roiWidth,
+        roiHeight
     });
     const model = createModelProto({
         graph: graph.bytes,
@@ -313,13 +320,15 @@ function exportAllenkFdncnnOnnx({
             graphName,
             inputName,
             outputName,
-            inputShape: [1, segments[0].inputChannels, roiSize, roiSize],
-            outputShape: [1, segments[segments.length - 1].outputChannels, roiSize, roiSize],
+            inputShape: [1, segments[0].inputChannels, roiHeight, roiWidth],
+            outputShape: [1, segments[segments.length - 1].outputChannels, roiHeight, roiWidth],
             nodeCount: graph.nodeCount,
             convolutionNodeCount: segments.length,
             reluNodeCount: segments.filter((segment, index) => index < segments.length - 1 && segment.activationType === 1).length,
             initializerCount: graph.initializerCount,
-            roiSize
+            roiSize: roiWidth === roiHeight ? roiWidth : null,
+            roiWidth,
+            roiHeight
         }
     };
 }

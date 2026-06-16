@@ -1,5 +1,3 @@
-import { createAlphaGradientMask } from './alphaGradientMask.js';
-
 const ALLENK_FDNCNN_MODEL = Object.freeze({
     name: 'FDnCNN Color FP16',
     upstream: 'allenk/GeminiWatermarkTool',
@@ -18,6 +16,15 @@ const ALLENK_FDNCNN_MODEL = Object.freeze({
 
 function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
+}
+
+function reflect101(index, length) {
+    if (length <= 1) return 0;
+    let value = Math.round(index);
+    while (value < 0 || value >= length) {
+        value = value < 0 ? -value : (length * 2 - value - 2);
+    }
+    return value;
 }
 
 function createGaussianKernel(sigma, radius = Math.ceil(sigma * 3)) {
@@ -52,7 +59,7 @@ function gaussianBlurFloatMap(source, width, height, sigma, radius = Math.ceil(s
         for (let x = 0; x < width; x++) {
             let sum = 0;
             for (let dx = -r; dx <= r; dx++) {
-                const xx = clamp(x + dx, 0, width - 1);
+                const xx = reflect101(x + dx, width);
                 sum += source[y * width + xx] * kernel[dx + r];
             }
             temp[y * width + x] = sum;
@@ -63,7 +70,7 @@ function gaussianBlurFloatMap(source, width, height, sigma, radius = Math.ceil(s
         for (let x = 0; x < width; x++) {
             let sum = 0;
             for (let dy = -r; dy <= r; dy++) {
-                const yy = clamp(y + dy, 0, height - 1);
+                const yy = reflect101(y + dy, height);
                 sum += temp[yy * width + x] * kernel[dy + r];
             }
             output[y * width + x] = sum;
@@ -123,6 +130,139 @@ function resizeSquareAlphaMapArea(sourceAlpha, sourceSize, targetWidth, targetHe
     return output;
 }
 
+function resizeSquareAlphaMapLinear(sourceAlpha, sourceSize, targetWidth, targetHeight = targetWidth) {
+    if (!sourceAlpha || sourceSize <= 0 || targetWidth <= 0 || targetHeight <= 0) {
+        return new Float32Array(0);
+    }
+    if (sourceSize === targetWidth && sourceSize === targetHeight) {
+        return new Float32Array(sourceAlpha);
+    }
+
+    const output = new Float32Array(targetWidth * targetHeight);
+    const scaleX = sourceSize / targetWidth;
+    const scaleY = sourceSize / targetHeight;
+
+    for (let y = 0; y < targetHeight; y++) {
+        const sourceY = (y + 0.5) * scaleY - 0.5;
+        const y0 = Math.floor(sourceY);
+        const y1 = y0 + 1;
+        const wy = sourceY - y0;
+
+        for (let x = 0; x < targetWidth; x++) {
+            const sourceX = (x + 0.5) * scaleX - 0.5;
+            const x0 = Math.floor(sourceX);
+            const x1 = x0 + 1;
+            const wx = sourceX - x0;
+
+            const topLeft = sourceAlpha[clamp(y0, 0, sourceSize - 1) * sourceSize + clamp(x0, 0, sourceSize - 1)] || 0;
+            const topRight = sourceAlpha[clamp(y0, 0, sourceSize - 1) * sourceSize + clamp(x1, 0, sourceSize - 1)] || 0;
+            const bottomLeft = sourceAlpha[clamp(y1, 0, sourceSize - 1) * sourceSize + clamp(x0, 0, sourceSize - 1)] || 0;
+            const bottomRight = sourceAlpha[clamp(y1, 0, sourceSize - 1) * sourceSize + clamp(x1, 0, sourceSize - 1)] || 0;
+            const top = topLeft * (1 - wx) + topRight * wx;
+            const bottom = bottomLeft * (1 - wx) + bottomRight * wx;
+
+            output[y * targetWidth + x] = top * (1 - wy) + bottom * wy;
+        }
+    }
+
+    return output;
+}
+
+function resizeSquareAlphaMapOpenCv(sourceAlpha, sourceSize, targetWidth, targetHeight = targetWidth) {
+    return targetWidth > sourceSize
+        ? resizeSquareAlphaMapLinear(sourceAlpha, sourceSize, targetWidth, targetHeight)
+        : resizeSquareAlphaMapArea(sourceAlpha, sourceSize, targetWidth, targetHeight);
+}
+
+const ALLENK_ELLIPSE_5X5 = Object.freeze([
+    [0, 0, 1, 0, 0],
+    [1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1],
+    [0, 0, 1, 0, 0]
+]);
+
+function dilateAllenkEllipse5x5(values, width, height) {
+    const output = new Float32Array(values.length);
+
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            let maxValue = 0;
+            for (let ky = 0; ky < 5; ky++) {
+                for (let kx = 0; kx < 5; kx++) {
+                    if (!ALLENK_ELLIPSE_5X5[ky][kx]) continue;
+                    const sx = x + kx - 2;
+                    const sy = y + ky - 2;
+                    if (sx < 0 || sy < 0 || sx >= width || sy >= height) continue;
+                    maxValue = Math.max(maxValue, values[sy * width + sx] || 0);
+                }
+            }
+            output[y * width + x] = maxValue;
+        }
+    }
+
+    return output;
+}
+
+function createAllenkOpenCvGradientMask({ alphaMap, width, height, strength }) {
+    if (!alphaMap || width <= 0 || height <= 0 || alphaMap.length < width * height) {
+        return new Float32Array(0);
+    }
+
+    const gradient = new Float32Array(width * height);
+    let minGradient = Number.POSITIVE_INFINITY;
+    let maxGradient = Number.NEGATIVE_INFINITY;
+
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const top = reflect101(y - 1, height);
+            const bottom = reflect101(y + 1, height);
+            const left = reflect101(x - 1, width);
+            const right = reflect101(x + 1, width);
+            const gx = (
+                -alphaMap[top * width + left] -
+                2 * alphaMap[y * width + left] -
+                alphaMap[bottom * width + left] +
+                alphaMap[top * width + right] +
+                2 * alphaMap[y * width + right] +
+                alphaMap[bottom * width + right]
+            );
+            const gy = (
+                -alphaMap[top * width + left] -
+                2 * alphaMap[top * width + x] -
+                alphaMap[top * width + right] +
+                alphaMap[bottom * width + left] +
+                2 * alphaMap[bottom * width + x] +
+                alphaMap[bottom * width + right]
+            );
+            const value = Math.sqrt(gx * gx + gy * gy);
+            gradient[y * width + x] = value;
+            minGradient = Math.min(minGradient, value);
+            maxGradient = Math.max(maxGradient, value);
+        }
+    }
+
+    if (!Number.isFinite(minGradient) || maxGradient <= minGradient) {
+        return new Float32Array(width * height);
+    }
+
+    const normalized = new Float32Array(width * height);
+    const scale = 1 / (maxGradient - minGradient);
+    for (let i = 0; i < normalized.length; i++) {
+        normalized[i] = Math.sqrt(clamp((gradient[i] - minGradient) * scale, 0, 1));
+    }
+
+    const expanded = dilateAllenkEllipse5x5(normalized, width, height);
+    const blurred = gaussianBlurFloatMap(expanded, width, height, 2);
+    const safeStrength = Number.isFinite(strength) ? Math.max(0, strength) : 1;
+
+    for (let i = 0; i < blurred.length; i++) {
+        blurred[i] = clamp(blurred[i] * safeStrength, 0, 1);
+    }
+
+    return blurred;
+}
+
 function normalizeAllenkFdncnnOptions(options = {}) {
     const sigma = Number.isFinite(options.sigma)
         ? clamp(options.sigma, 0, ALLENK_FDNCNN_MODEL.maxSigma)
@@ -145,17 +285,14 @@ function createAllenkGradientMask({
 } = {}) {
     const sourceSize = inferSquareSize(alphaMap);
     const resizedAlphaMap = sourceSize > 0
-        ? resizeSquareAlphaMapArea(alphaMap, sourceSize, width, height)
+        ? resizeSquareAlphaMapOpenCv(alphaMap, sourceSize, width, height)
         : alphaMap;
 
-    return createAlphaGradientMask({
+    return createAllenkOpenCvGradientMask({
         alphaMap: resizedAlphaMap,
         width,
         height,
-        strength,
-        gamma: 0.5,
-        dilateRadius: 2,
-        blurSigma: 2
+        strength
     });
 }
 
@@ -184,6 +321,58 @@ function calculateAllenkPaddedRoi({ imageWidth, imageHeight, region, padding = A
             y: clamp(Math.round(region.y - y), 0, height),
             width: clamp(Math.round(region.width), 0, width),
             height: clamp(Math.round(region.height), 0, height)
+        }
+    };
+}
+
+function calculateAllenkVirtualPaddedRoi({
+    imageWidth,
+    imageHeight,
+    region,
+    padding = ALLENK_FDNCNN_MODEL.defaultPadding,
+    targetWidth = null,
+    targetHeight = null
+} = {}) {
+    if (!region || imageWidth <= 0 || imageHeight <= 0 || region.width <= 0 || region.height <= 0) {
+        return null;
+    }
+
+    const safePadding = Math.max(0, Math.round(padding));
+    const x = Math.round(region.x - safePadding);
+    const y = Math.round(region.y - safePadding);
+    const defaultWidth = Math.round(region.width + safePadding * 2);
+    const defaultHeight = Math.round(region.height + safePadding * 2);
+    const width = Number.isInteger(targetWidth) && targetWidth > 0 ? targetWidth : defaultWidth;
+    const height = Number.isInteger(targetHeight) && targetHeight > 0 ? targetHeight : defaultHeight;
+
+    if (width < 4 || height < 4) return null;
+
+    const visibleX = clamp(x, 0, imageWidth);
+    const visibleY = clamp(y, 0, imageHeight);
+    const visibleRight = clamp(x + width, 0, imageWidth);
+    const visibleBottom = clamp(y + height, 0, imageHeight);
+    const visibleWidth = visibleRight - visibleX;
+    const visibleHeight = visibleBottom - visibleY;
+    if (visibleWidth <= 0 || visibleHeight <= 0) return null;
+
+    return {
+        x,
+        y,
+        width,
+        height,
+        inner: {
+            x: clamp(Math.round(region.x - x), 0, width),
+            y: clamp(Math.round(region.y - y), 0, height),
+            width: clamp(Math.round(region.width), 0, width),
+            height: clamp(Math.round(region.height), 0, height)
+        },
+        visible: {
+            x: visibleX,
+            y: visibleY,
+            width: visibleWidth,
+            height: visibleHeight,
+            offsetX: visibleX - x,
+            offsetY: visibleY - y
         }
     };
 }
@@ -229,6 +418,59 @@ function calculateAllenkRuntimeRoi({
             height: clamp(Math.round(region.height), 0, safeTargetHeight)
         }
     };
+}
+
+function extractAllenkVirtualImageData({
+    imageData,
+    roi,
+    imageX = 0,
+    imageY = 0,
+    canvasWidth = imageData?.width || 0,
+    canvasHeight = imageData?.height || 0
+} = {}) {
+    if (
+        !imageData?.data ||
+        !roi ||
+        imageData.width <= 0 ||
+        imageData.height <= 0 ||
+        roi.width <= 0 ||
+        roi.height <= 0 ||
+        canvasWidth <= 0 ||
+        canvasHeight <= 0
+    ) {
+        return { width: 0, height: 0, data: new Uint8ClampedArray(0) };
+    }
+
+    const width = Math.max(1, Math.round(roi.width));
+    const height = Math.max(1, Math.round(roi.height));
+    const output = new Uint8ClampedArray(width * height * 4);
+    const sourceStride = imageData.data.length >= imageData.width * imageData.height * 4 ? 4 : 3;
+
+    for (let y = 0; y < height; y++) {
+        const globalY = clamp(Math.round(roi.y + y), 0, canvasHeight - 1);
+        const localY = clamp(globalY - Math.round(imageY), 0, imageData.height - 1);
+        for (let x = 0; x < width; x++) {
+            const globalX = clamp(Math.round(roi.x + x), 0, canvasWidth - 1);
+            const localX = clamp(globalX - Math.round(imageX), 0, imageData.width - 1);
+            const src = (localY * imageData.width + localX) * sourceStride;
+            const dst = (y * width + x) * 4;
+            output[dst] = imageData.data[src] || 0;
+            output[dst + 1] = imageData.data[src + 1] || 0;
+            output[dst + 2] = imageData.data[src + 2] || 0;
+            output[dst + 3] = sourceStride >= 4 ? (imageData.data[src + 3] ?? 255) : 255;
+        }
+    }
+
+    const ImageDataCtor = typeof imageData.constructor === 'function' && imageData.constructor !== Object
+        ? imageData.constructor
+        : typeof ImageData === 'function'
+            ? ImageData
+            : null;
+    if (ImageDataCtor) {
+        return new ImageDataCtor(output, width, height);
+    }
+
+    return { width, height, data: output };
 }
 
 function embedAllenkRoiWeights({ roiWeights, roiWidth, roiHeight, paddedRoi, blurSigma = 1 } = {}) {
@@ -363,8 +605,10 @@ export {
     buildAllenkFdncnnInput,
     calculateAllenkPaddedRoi,
     calculateAllenkRuntimeRoi,
+    calculateAllenkVirtualPaddedRoi,
     convertAllenkFdncnnOutputToRgba,
     createAllenkGradientMask,
     embedAllenkRoiWeights,
+    extractAllenkVirtualImageData,
     normalizeAllenkFdncnnOptions
 };

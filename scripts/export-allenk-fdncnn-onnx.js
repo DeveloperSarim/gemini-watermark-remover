@@ -16,7 +16,9 @@ function parseArgs(argv = process.argv.slice(2)) {
     const args = {
         inputDir: DEFAULT_INPUT_DIR,
         outputDir: DEFAULT_OUTPUT_DIR,
-        roiSize: DEFAULT_ROI_SIZE
+        roiSize: DEFAULT_ROI_SIZE,
+        roiWidth: null,
+        roiHeight: null
     };
 
     for (let i = 0; i < argv.length; i++) {
@@ -27,6 +29,10 @@ function parseArgs(argv = process.argv.slice(2)) {
             args.outputDir = path.resolve(argv[++i]);
         } else if (arg === '--roi-size') {
             args.roiSize = Number.parseInt(argv[++i], 10);
+        } else if (arg === '--roi-width') {
+            args.roiWidth = Number.parseInt(argv[++i], 10);
+        } else if (arg === '--roi-height') {
+            args.roiHeight = Number.parseInt(argv[++i], 10);
         } else if (arg === '--help' || arg === '-h') {
             args.help = true;
         } else {
@@ -36,6 +42,12 @@ function parseArgs(argv = process.argv.slice(2)) {
 
     if (!args.help && (!Number.isInteger(args.roiSize) || args.roiSize <= 0)) {
         throw new Error(`Invalid --roi-size: ${args.roiSize}`);
+    }
+    if (!args.help && args.roiWidth !== null && (!Number.isInteger(args.roiWidth) || args.roiWidth <= 0)) {
+        throw new Error(`Invalid --roi-width: ${args.roiWidth}`);
+    }
+    if (!args.help && args.roiHeight !== null && (!Number.isInteger(args.roiHeight) || args.roiHeight <= 0)) {
+        throw new Error(`Invalid --roi-height: ${args.roiHeight}`);
     }
 
     return args;
@@ -48,8 +60,12 @@ function sha256(buffer) {
 async function exportAllenkFdncnnOnnxArtifact({
     inputDir = DEFAULT_INPUT_DIR,
     outputDir = DEFAULT_OUTPUT_DIR,
-    roiSize = DEFAULT_ROI_SIZE
+    roiSize = DEFAULT_ROI_SIZE,
+    roiWidth = null,
+    roiHeight = null
 } = {}) {
+    const exportWidth = Number.isInteger(roiWidth) && roiWidth > 0 ? roiWidth : roiSize;
+    const exportHeight = Number.isInteger(roiHeight) && roiHeight > 0 ? roiHeight : roiSize;
     const manifestPath = path.join(inputDir, 'manifest.json');
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
     const paramPath = path.resolve(manifest.model.param.path);
@@ -61,11 +77,14 @@ async function exportAllenkFdncnnOnnxArtifact({
     const exported = exportAllenkFdncnnOnnx({
         bin: binBuffer,
         weightLayout,
-        roiSize
+        roiSize,
+        roiWidth: exportWidth,
+        roiHeight: exportHeight
     });
 
     await mkdir(outputDir, { recursive: true });
-    const onnxPath = path.join(outputDir, `model_core_fp32_${roiSize}.onnx`);
+    const shapeLabel = exportWidth === exportHeight ? String(exportWidth) : `${exportWidth}x${exportHeight}`;
+    const onnxPath = path.join(outputDir, `model_core_fp32_${shapeLabel}.onnx`);
     const onnxManifestPath = path.join(outputDir, 'onnx-manifest.json');
     await writeFile(onnxPath, exported.bytes);
 
@@ -75,7 +94,7 @@ async function exportAllenkFdncnnOnnxArtifact({
         upstream: manifest.upstream,
         license: manifest.license,
         model: {
-            name: `${manifest.model.name} ONNX FP32 ${roiSize}`,
+            name: `${manifest.model.name} ONNX FP32 ${shapeLabel}`,
             sourceRuntime: manifest.model.runtime,
             runtimeTarget: 'ONNX Runtime Web / WebGPU spike',
             onnx: {
@@ -101,7 +120,7 @@ async function exportAllenkFdncnnOnnxArtifact({
 }
 
 function printHelp() {
-    console.log(`Usage: pnpm export:allenk-fdncnn-onnx [--input-dir <dir>] [--output-dir <dir>] [--roi-size 72]
+    console.log(`Usage: pnpm export:allenk-fdncnn-onnx [--input-dir <dir>] [--output-dir <dir>] [--roi-size 72] [--roi-width 87 --roi-height 74]
 
 Export the extracted allenk FDnCNN NCNN model into a fixed-shape ONNX asset for browser runtime spikes.
 

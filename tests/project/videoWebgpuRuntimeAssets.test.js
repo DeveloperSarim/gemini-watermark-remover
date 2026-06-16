@@ -24,6 +24,17 @@ test('video WebGPU asyncify runtime assets should be bundled in public', async (
     }
 });
 
+test('video allenk FDnCNN model assets should be bundled in public', async () => {
+    for (const fileName of [
+        'model_core_fp32_86x74.onnx',
+        'model_core_fp32_104.onnx',
+        'model_core_fp32_200.onnx'
+    ]) {
+        const info = await stat(projectUrl(`public/models/allenk-fdncnn/${fileName}`));
+        assert.ok(info.size > 0, `${fileName} should not be empty`);
+    }
+});
+
 test('video app should route allenk FDnCNN through runtime profiles', async () => {
     const source = await readFile(projectUrl('src/video-app.js'), 'utf8');
     const exportSource = await readFile(projectUrl('src/video/videoExport.js'), 'utf8');
@@ -32,9 +43,10 @@ test('video app should route allenk FDnCNN through runtime profiles', async () =
     assert.match(source, /resolveAllenkFdncnnRuntimeProfile/);
     assert.match(exportSource, /resolveAllenkFdncnnRuntimeProfile/);
     assert.match(exportSource, /resolveExportAllenkFdncnnPadding/);
+    assert.match(policySource, /model_core_fp32_86x74\.onnx/);
     assert.match(policySource, /model_core_fp32_104\.onnx/);
     assert.match(policySource, /model_core_fp32_200\.onnx/);
-    assert.match(source, /allenkFdncnnRuntimeProfile\.padding/);
+    assert.match(source, /runtimeProfile\.padding/);
     assert.match(source, /runtimePromise\.catch/);
     assert.match(source, /allenkFdncnnRuntimePromises\.delete\(profile\.id\)/);
     assert.doesNotMatch(source, /allenkFdncnnPadding:\s*64/);

@@ -9,15 +9,29 @@ import { resolveVideoWatermarkCandidates } from '../../src/video/videoWatermarkC
 
 test('allenk FDnCNN runtime profiles should expose fixed-shape model contracts', () => {
     assert.deepEqual(ALLENK_FDNCNN_RUNTIME_PROFILES.map((profile) => profile.id), [
+        'allenk-fdncnn-veo-text-23x10',
         'allenk-fdncnn-104',
         'allenk-fdncnn-200'
     ]);
-    assert.deepEqual(ALLENK_FDNCNN_RUNTIME_PROFILES[0].inputShape, [1, 4, 104, 104]);
-    assert.deepEqual(ALLENK_FDNCNN_RUNTIME_PROFILES[0].outputShape, [1, 3, 104, 104]);
-    assert.match(ALLENK_FDNCNN_RUNTIME_PROFILES[0].modelUrl, /model_core_fp32_104\.onnx$/);
-    assert.deepEqual(ALLENK_FDNCNN_RUNTIME_PROFILES[1].inputShape, [1, 4, 200, 200]);
-    assert.deepEqual(ALLENK_FDNCNN_RUNTIME_PROFILES[1].outputShape, [1, 3, 200, 200]);
-    assert.match(ALLENK_FDNCNN_RUNTIME_PROFILES[1].modelUrl, /model_core_fp32_200\.onnx$/);
+    assert.deepEqual(ALLENK_FDNCNN_RUNTIME_PROFILES[0].inputShape, [1, 4, 74, 86]);
+    assert.deepEqual(ALLENK_FDNCNN_RUNTIME_PROFILES[0].outputShape, [1, 3, 74, 86]);
+    assert.match(ALLENK_FDNCNN_RUNTIME_PROFILES[0].modelUrl, /model_core_fp32_86x74\.onnx$/);
+    assert.deepEqual(ALLENK_FDNCNN_RUNTIME_PROFILES[1].inputShape, [1, 4, 104, 104]);
+    assert.deepEqual(ALLENK_FDNCNN_RUNTIME_PROFILES[1].outputShape, [1, 3, 104, 104]);
+    assert.match(ALLENK_FDNCNN_RUNTIME_PROFILES[1].modelUrl, /model_core_fp32_104\.onnx$/);
+    assert.deepEqual(ALLENK_FDNCNN_RUNTIME_PROFILES[2].inputShape, [1, 4, 200, 200]);
+    assert.deepEqual(ALLENK_FDNCNN_RUNTIME_PROFILES[2].outputShape, [1, 3, 200, 200]);
+    assert.match(ALLENK_FDNCNN_RUNTIME_PROFILES[2].modelUrl, /model_core_fp32_200\.onnx$/);
+});
+
+test('resolveAllenkFdncnnRuntimeProfile should use the rectangular Veo text model for 23x10 watermarks', () => {
+    const profile = resolveAllenkFdncnnRuntimeProfile({ width: 23, height: 10 });
+
+    assert.equal(profile.id, 'allenk-fdncnn-veo-text-23x10');
+    assert.equal(profile.modelWidth, 86);
+    assert.equal(profile.modelHeight, 74);
+    assert.equal(profile.padding, 32);
+    assert.deepEqual(profile.inputShape, [1, 4, 74, 86]);
 });
 
 test('resolveAllenkFdncnnRuntimeProfile should use the 104 model for small video watermarks', () => {
@@ -63,6 +77,7 @@ test('resolveAllenkFdncnnRuntimeProfile should cover every video catalog positio
             width: 1280,
             height: 720,
             expected: {
+                'veo-720p-3-inset': { profileId: 'allenk-fdncnn-104', size: 48, padding: 28 },
                 'veo-720p-1-standard': { profileId: 'allenk-fdncnn-104', size: 48, padding: 28 },
                 'veo-720p-2-compact': { profileId: 'allenk-fdncnn-104', size: 44, padding: 30 }
             }

@@ -125,6 +125,62 @@ test('allenk FDnCNN browser spike backend should be accepted but fail closed wit
     assert.match(normalized.denoiseRuntimeReason, /browser GPU inference runtime/);
 });
 
+test('applyVideoResidualCleanup should keep Veo text FDnCNN ROI at runtime size and write visible pixels only', () => {
+    const position = { x: 682, y: 1254, width: 23, height: 10 };
+    const alphaMap = new Float32Array(position.width * position.height).fill(0.18);
+    const calls = [];
+    const writes = [];
+    const runtime = {
+        id: 'allenk-fdncnn-86x74-test',
+        inputShape: [1, 4, 74, 86],
+        denoiseImageData({ imageData, sigma }) {
+            calls.push({ width: imageData.width, height: imageData.height, sigma });
+            return {
+                runtime: 'allenk-fdncnn-86x74-test',
+                imageData: {
+                    width: imageData.width,
+                    height: imageData.height,
+                    data: new Uint8ClampedArray(imageData.data)
+                }
+            };
+        }
+    };
+    const ctx = {
+        canvas: { width: 720, height: 1280 },
+        getImageData(x, y, width, height) {
+            assert.ok(x >= 0);
+            assert.ok(y >= 0);
+            assert.ok(x + width <= this.canvas.width);
+            assert.ok(y + height <= this.canvas.height);
+            return {
+                width,
+                height,
+                data: new Uint8ClampedArray(width * height * 4).fill(128)
+            };
+        },
+        putImageData(imageData, x, y) {
+            assert.ok(x >= 0);
+            assert.ok(y >= 0);
+            assert.ok(x + imageData.width <= this.canvas.width);
+            assert.ok(y + imageData.height <= this.canvas.height);
+            writes.push({ x, y, width: imageData.width, height: imageData.height });
+        }
+    };
+
+    const result = applyVideoResidualCleanup(ctx, position, alphaMap, {
+        residualCleanupStrength: 0,
+        denoiseBackend: VIDEO_DENOISE_BACKENDS.ALLENK_FDNCNN_BROWSER_SPIKE,
+        edgeDenoiseStrength: 1,
+        allenkFdncnnRuntime: runtime,
+        allenkFdncnnSigma: 20,
+        allenkFdncnnPadding: 32
+    });
+
+    assert.equal(result.denoiseRuntimeStatus, 'applied');
+    assert.deepEqual(calls, [{ width: 86, height: 74, sigma: 20 }]);
+    assert.deepEqual(writes, [{ x: 650, y: 1222, width: 70, height: 58 }]);
+});
+
 test('buildLumaStructureGuard should protect strong image edges', () => {
     const width = 9;
     const height = 5;
@@ -648,6 +704,7 @@ test('applyVideoResidualCleanup should feed fixed-shape ONNX inputs for every vi
 
     assert.ok(covered.has('veo-1080p-standard:allenk-fdncnn-200'));
     assert.ok(covered.has('veo-1080p-inset:allenk-fdncnn-200'));
+    assert.ok(covered.has('veo-720p-3-inset:allenk-fdncnn-104'));
     assert.ok(covered.has('veo-720p-1-standard:allenk-fdncnn-104'));
     assert.ok(covered.has('veo-720p-2-compact:allenk-fdncnn-104'));
     assert.ok(covered.has('veo-1080p-standard:allenk-fdncnn-104'));

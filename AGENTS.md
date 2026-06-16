@@ -2,6 +2,12 @@
 
 ## Debug Workflow
 
+### Allenk Upstream Reference
+
+- The local fork of allenk/GeminiWatermarkTool is at `D:\Project\GeminiWatermarkTool`.
+- When learning or comparing upstream watermark catalog specs, alpha maps, video rules, FDnCNN behavior, or CLI behavior, prefer this local fork over temporary clones or remote README-only assumptions.
+- Treat upstream specs as candidate priors until they are verified against this repo's sample scoring, crop sheets, and output residual gates.
+
 ### Data-Driven Watermark Investigation
 
 - When user-provided samples show obvious watermarks being skipped or poorly removed, treat the first task as pattern discovery, not threshold tuning.

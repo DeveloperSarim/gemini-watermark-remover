@@ -4,6 +4,11 @@ import { pathToFileURL } from 'node:url';
 
 import { chromium } from 'playwright';
 
+import {
+    isHttpUrl,
+    withLocalStaticPreviewPage
+} from './local-static-preview-server.js';
+
 const DEFAULT_PAGE_PATH = path.resolve('dist/video-preview.html');
 const PRESET_BUTTON_SELECTOR = '#relocatedReviewPresetBtn';
 
@@ -28,7 +33,8 @@ function parseArgs(argv) {
         } else if (arg === '--output') {
             args.outputPath = path.resolve(argv[++i]);
         } else if (arg === '--page') {
-            args.pagePath = path.resolve(argv[++i]);
+            const pageValue = argv[++i];
+            args.pagePath = isHttpUrl(pageValue) ? pageValue : path.resolve(pageValue);
         } else if (arg === '--report') {
             args.reportPath = path.resolve(argv[++i]);
         } else if (arg === '--markdown') {
@@ -104,6 +110,12 @@ async function collectPresetState(page) {
     });
 }
 
+async function clickPresetButton(page) {
+    await page.evaluate((selector) => {
+        document.querySelector(selector)?.click();
+    }, PRESET_BUTTON_SELECTOR);
+}
+
 export function renderVideoUiPresetExportMarkdown(report) {
     const screenshots = report.screenshots || {};
     const lines = [
@@ -166,58 +178,61 @@ export async function exportVideoUiPreset({
 
     const browser = await chromium.launch({ headless: true });
     try {
-        const page = await browser.newPage({ viewport: { width: 1440, height: 1200 } });
-        page.setDefaultTimeout(timeoutMs);
-        await page.goto(pathToFileURL(pagePath).href);
-        await page.locator('#fileInput').setInputFiles(inputPath);
-        await page.locator(PRESET_BUTTON_SELECTOR).click();
-        const presetState = await collectPresetState(page);
+        return await withLocalStaticPreviewPage(pagePath, async (pageUrl) => {
+            const page = await browser.newPage({ viewport: { width: 1440, height: 1200 } });
+            page.setDefaultTimeout(timeoutMs);
+            await page.goto(pageUrl);
+            await page.locator('#fileInput').setInputFiles(inputPath);
+            await clickPresetButton(page);
+            const presetState = await collectPresetState(page);
 
-        if (screenshots) {
-            await mkdir(resolvedScreenshotDir, { recursive: true });
-            await page.screenshot({ path: beforeScreenshotPath, fullPage: true });
-        }
+            if (screenshots) {
+                await mkdir(resolvedScreenshotDir, { recursive: true });
+                await page.screenshot({ path: beforeScreenshotPath, fullPage: true });
+            }
 
-        await page.locator('#processBtn').click();
-        await page.waitForFunction(() => {
-            const status = document.getElementById('status');
-            return status?.dataset?.tone === 'success' || status?.dataset?.tone === 'error';
-        }, null, { timeout: timeoutMs });
+            await page.locator('#processBtn').click();
+            await page.waitForFunction(() => {
+                const status = document.getElementById('status');
+                return status?.dataset?.tone === 'success' || status?.dataset?.tone === 'error';
+            }, null, { timeout: timeoutMs });
 
-        const resultState = await collectPresetState(page);
-        if (screenshots) {
-            await page.screenshot({ path: afterScreenshotPath, fullPage: true });
-        }
-        if (resultState.statusTone !== 'success') {
-            throw new Error(resultState.statusText || '视频导出失败');
-        }
+            const resultState = await collectPresetState(page);
+            if (screenshots) {
+                await page.screenshot({ path: afterScreenshotPath, fullPage: true });
+            }
+            if (resultState.statusTone !== 'success') {
+                throw new Error(resultState.statusText || '视频导出失败');
+            }
 
-        const buffer = await blobUrlToBuffer(page);
-        await mkdir(path.dirname(resolvedOutputPath), { recursive: true });
-        await writeFile(resolvedOutputPath, buffer);
+            const buffer = await blobUrlToBuffer(page);
+            await mkdir(path.dirname(resolvedOutputPath), { recursive: true });
+            await writeFile(resolvedOutputPath, buffer);
 
-        const report = {
-            generatedAt: new Date().toISOString(),
-            pagePath: path.resolve(pagePath),
-            inputPath: path.resolve(inputPath),
-            outputPath: resolvedOutputPath,
-            reportPath: resolvedReportPath,
-            markdownPath: resolvedMarkdownPath,
-            presetButtonSelector: PRESET_BUTTON_SELECTOR,
-            presetState,
-            resultState,
-            screenshots: screenshots
-                ? { before: beforeScreenshotPath, after: afterScreenshotPath }
-                : {},
-            bytes: buffer.byteLength
-        };
+            const report = {
+                generatedAt: new Date().toISOString(),
+                pagePath: isHttpUrl(pagePath) ? pagePath : path.resolve(pagePath),
+                pageUrl,
+                inputPath: path.resolve(inputPath),
+                outputPath: resolvedOutputPath,
+                reportPath: resolvedReportPath,
+                markdownPath: resolvedMarkdownPath,
+                presetButtonSelector: PRESET_BUTTON_SELECTOR,
+                presetState,
+                resultState,
+                screenshots: screenshots
+                    ? { before: beforeScreenshotPath, after: afterScreenshotPath }
+                    : {},
+                bytes: buffer.byteLength
+            };
 
-        await mkdir(path.dirname(resolvedReportPath), { recursive: true });
-        await writeFile(resolvedReportPath, `${JSON.stringify(report, null, 2)}\n`);
-        await mkdir(path.dirname(resolvedMarkdownPath), { recursive: true });
-        await writeFile(resolvedMarkdownPath, renderVideoUiPresetExportMarkdown(report));
+            await mkdir(path.dirname(resolvedReportPath), { recursive: true });
+            await writeFile(resolvedReportPath, `${JSON.stringify(report, null, 2)}\n`);
+            await mkdir(path.dirname(resolvedMarkdownPath), { recursive: true });
+            await writeFile(resolvedMarkdownPath, renderVideoUiPresetExportMarkdown(report));
 
-        return report;
+            return report;
+        });
     } finally {
         await browser.close();
     }

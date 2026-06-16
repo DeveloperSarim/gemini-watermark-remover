@@ -4,12 +4,13 @@ import { pathToFileURL } from 'node:url';
 
 import { chromium } from 'playwright';
 
+import {
+    isHttpUrl,
+    withLocalStaticPreviewPage
+} from './local-static-preview-server.js';
+
 const DEFAULT_PAGE_PATH = path.resolve('dist/video-preview.html');
 const DEFAULT_DENOISE_BACKEND = 'none';
-
-function isHttpUrl(value) {
-    return /^https?:\/\//i.test(String(value || ''));
-}
 
 function parseArgs(argv) {
     const args = {
@@ -27,6 +28,8 @@ function parseArgs(argv) {
         allowLowConfidence: false,
         edgeDenoiseStrength: null,
         residualCleanupStrength: null,
+        allenkFdncnnSigma: null,
+        allenkFdncnnPadding: null,
         videoBitrate: null,
         timeoutMs: 6 * 60 * 1000
     };
@@ -66,6 +69,10 @@ function parseArgs(argv) {
             args.edgeDenoiseStrength = Number(argv[++i]);
         } else if (arg === '--residual-cleanup-strength') {
             args.residualCleanupStrength = Number(argv[++i]);
+        } else if (arg === '--allenk-fdncnn-sigma') {
+            args.allenkFdncnnSigma = Number(argv[++i]);
+        } else if (arg === '--allenk-fdncnn-padding') {
+            args.allenkFdncnnPadding = Number(argv[++i]);
         } else if (arg === '--video-bitrate') {
             args.videoBitrate = Number(argv[++i]);
         } else if (arg === '--allow-low-confidence') {
@@ -100,6 +107,8 @@ Options:
   --adaptive-alpha             Enable per-frame adaptive alpha refinement
   --edge-denoise-strength <n>  Optional strength, 0..1 for canvas backends and 0..3 for AI backend
   --residual-cleanup-strength <n> Optional 0..1.8 post-cleanup strength
+  --allenk-fdncnn-sigma <n>    Optional AI denoise sigma override
+  --allenk-fdncnn-padding <n>  Optional AI denoise padding override
   --video-bitrate <bps>        Optional output bitrate in bits per second
   --allow-low-confidence       Allow export when detector confidence is low
   --page <dist html path>      Defaults to dist/video-preview.html
@@ -188,6 +197,8 @@ export async function exportVideoBackendVariant({
     adaptiveAlpha = false,
     edgeDenoiseStrength = null,
     residualCleanupStrength = null,
+    allenkFdncnnSigma = null,
+    allenkFdncnnPadding = null,
     videoBitrate = null,
     allowLowConfidence = false,
     timeoutMs = 6 * 60 * 1000
@@ -197,116 +208,135 @@ export async function exportVideoBackendVariant({
 
     const browser = await chromium.launch({ headless: true });
     try {
-        const page = await browser.newPage();
-        page.setDefaultTimeout(timeoutMs);
-        await page.goto(isHttpUrl(pagePath) ? pagePath : pathToFileURL(pagePath).href);
-        await page.locator('#fileInput').setInputFiles(inputPath);
-        await setControlValue(page, '#denoiseBackend', denoiseBackend);
-        if (Number.isFinite(alphaGain) && alphaGain > 0) {
-            await page.locator('#alphaGain').fill(String(Math.max(0.25, Math.min(1.35, alphaGain))));
-            await page.locator('#alphaGain').dispatchEvent('input');
-        }
-        if (typeof alphaProfile === 'string' && alphaProfile) {
+        return await withLocalStaticPreviewPage(pagePath, async (pageUrl) => {
+            const page = await browser.newPage();
+            page.setDefaultTimeout(timeoutMs);
+            await page.goto(pageUrl);
+            await page.locator('#fileInput').setInputFiles(inputPath);
             await page.evaluate((value) => {
-                window.__gwrVideoAlphaProfile = value;
-            }, alphaProfile);
-        }
-        if (Number.isFinite(alphaLowScale) && alphaLowScale > 0) {
-            await page.evaluate((value) => {
-                window.__gwrVideoAlphaLowScale = value;
-            }, Math.max(0.5, Math.min(1.5, alphaLowScale)));
-        }
-        if (Number.isFinite(alphaBodyScale) && alphaBodyScale > 0) {
-            await page.evaluate((value) => {
-                window.__gwrVideoAlphaBodyScale = value;
-            }, Math.max(0.5, Math.min(1.5, alphaBodyScale)));
-        }
-        if (Number.isFinite(alphaEdgeBoost) && alphaEdgeBoost >= 0) {
-            await page.evaluate((value) => {
-                window.__gwrVideoAlphaEdgeBoost = value;
-            }, Math.max(0, Math.min(0.12, alphaEdgeBoost)));
-        }
-        if (typeof alphaLocalRegion === 'string' && alphaLocalRegion) {
-            await page.evaluate((value) => {
-                window.__gwrVideoAlphaLocalRegion = value;
-            }, alphaLocalRegion);
-        }
-        if (Number.isFinite(alphaLocalLowScale) && alphaLocalLowScale > 0) {
-            await page.evaluate((value) => {
-                window.__gwrVideoAlphaLocalLowScale = value;
-            }, Math.max(0.5, Math.min(1.5, alphaLocalLowScale)));
-        }
-        if (Number.isFinite(alphaLocalBodyScale) && alphaLocalBodyScale > 0) {
-            await page.evaluate((value) => {
-                window.__gwrVideoAlphaLocalBodyScale = value;
-            }, Math.max(0.5, Math.min(1.5, alphaLocalBodyScale)));
-        }
-        if (adaptiveAlpha) {
-            await setCheckboxValue(page, '#adaptiveAlpha', true);
-        }
-        if (Number.isFinite(edgeDenoiseStrength)) {
-            await page.evaluate((value) => {
-                window.__gwrVideoOverrideEdgeDenoiseStrength = value;
-            }, Math.max(0, Math.min(3, edgeDenoiseStrength)));
-            await setNumericInputValue(page, '#edgeDenoiseStrength', Math.max(0, Math.min(3, edgeDenoiseStrength)), {
-                step: 'any'
-            });
-        }
-        if (Number.isFinite(residualCleanupStrength)) {
-            await page.evaluate((value) => {
-                window.__gwrVideoOverrideResidualCleanupStrength = value;
-            }, Math.max(0, Math.min(1.8, residualCleanupStrength)));
-            await setNumericInputValue(page, '#residualCleanup', Math.max(0, Math.min(1.8, residualCleanupStrength)), {
-                step: 'any'
-            });
-        }
-        if (Number.isFinite(videoBitrate) && videoBitrate > 0) {
-            await setNumericInputValue(page, '#videoBitrateMbps', videoBitrate / 1000 / 1000);
-        }
-        if (allowLowConfidence) {
-            await page.evaluate(() => {
-                window.__gwrVideoOverrideAllowLowConfidence = true;
-            });
-            await setCheckboxValue(page, '#allowLowConfidence', true);
-        }
-        await page.locator('#processBtn').click();
-        await page.waitForFunction(() => {
-            const status = document.getElementById('status');
-            return status?.dataset?.tone === 'success' || status?.dataset?.tone === 'error';
-        }, null, { timeout: timeoutMs });
+                window.__gwrVideoOverrideDenoiseBackend = value;
+            }, denoiseBackend);
+            await setControlValue(page, '#denoiseBackend', denoiseBackend);
+            if (Number.isFinite(alphaGain) && alphaGain > 0) {
+                await setNumericInputValue(page, '#alphaGain', Math.max(0.25, Math.min(1.35, alphaGain)), {
+                    step: 'any'
+                });
+            }
+            if (typeof alphaProfile === 'string' && alphaProfile) {
+                await page.evaluate((value) => {
+                    window.__gwrVideoAlphaProfile = value;
+                }, alphaProfile);
+            }
+            if (Number.isFinite(alphaLowScale) && alphaLowScale > 0) {
+                await page.evaluate((value) => {
+                    window.__gwrVideoAlphaLowScale = value;
+                }, Math.max(0.5, Math.min(1.5, alphaLowScale)));
+            }
+            if (Number.isFinite(alphaBodyScale) && alphaBodyScale > 0) {
+                await page.evaluate((value) => {
+                    window.__gwrVideoAlphaBodyScale = value;
+                }, Math.max(0.5, Math.min(1.5, alphaBodyScale)));
+            }
+            if (Number.isFinite(alphaEdgeBoost) && alphaEdgeBoost >= 0) {
+                await page.evaluate((value) => {
+                    window.__gwrVideoAlphaEdgeBoost = value;
+                }, Math.max(0, Math.min(0.12, alphaEdgeBoost)));
+            }
+            if (typeof alphaLocalRegion === 'string' && alphaLocalRegion) {
+                await page.evaluate((value) => {
+                    window.__gwrVideoAlphaLocalRegion = value;
+                }, alphaLocalRegion);
+            }
+            if (Number.isFinite(alphaLocalLowScale) && alphaLocalLowScale > 0) {
+                await page.evaluate((value) => {
+                    window.__gwrVideoAlphaLocalLowScale = value;
+                }, Math.max(0.5, Math.min(1.5, alphaLocalLowScale)));
+            }
+            if (Number.isFinite(alphaLocalBodyScale) && alphaLocalBodyScale > 0) {
+                await page.evaluate((value) => {
+                    window.__gwrVideoAlphaLocalBodyScale = value;
+                }, Math.max(0.5, Math.min(1.5, alphaLocalBodyScale)));
+            }
+            if (adaptiveAlpha) {
+                await setCheckboxValue(page, '#adaptiveAlpha', true);
+            }
+            if (Number.isFinite(edgeDenoiseStrength)) {
+                await page.evaluate((value) => {
+                    window.__gwrVideoOverrideEdgeDenoiseStrength = value;
+                }, Math.max(0, Math.min(3, edgeDenoiseStrength)));
+                await setNumericInputValue(page, '#edgeDenoiseStrength', Math.max(0, Math.min(3, edgeDenoiseStrength)), {
+                    step: 'any'
+                });
+            }
+            if (Number.isFinite(residualCleanupStrength)) {
+                await page.evaluate((value) => {
+                    window.__gwrVideoOverrideResidualCleanupStrength = value;
+                }, Math.max(0, Math.min(1.8, residualCleanupStrength)));
+                await setNumericInputValue(page, '#residualCleanup', Math.max(0, Math.min(1.8, residualCleanupStrength)), {
+                    step: 'any'
+                });
+            }
+            if (Number.isFinite(allenkFdncnnSigma)) {
+                await page.evaluate((value) => {
+                    window.__gwrVideoOverrideAllenkFdncnnSigma = value;
+                }, Math.max(0, Math.min(150, allenkFdncnnSigma)));
+            }
+            if (Number.isFinite(allenkFdncnnPadding)) {
+                await page.evaluate((value) => {
+                    window.__gwrVideoOverrideAllenkFdncnnPadding = value;
+                }, Math.max(0, Math.round(allenkFdncnnPadding)));
+            }
+            if (Number.isFinite(videoBitrate) && videoBitrate > 0) {
+                await setNumericInputValue(page, '#videoBitrateMbps', videoBitrate / 1000 / 1000);
+            }
+            if (allowLowConfidence) {
+                await page.evaluate(() => {
+                    window.__gwrVideoOverrideAllowLowConfidence = true;
+                });
+                await setCheckboxValue(page, '#allowLowConfidence', true);
+            }
+            await page.locator('#processBtn').click();
+            await page.waitForFunction(() => {
+                const status = document.getElementById('status');
+                return status?.dataset?.tone === 'success' || status?.dataset?.tone === 'error';
+            }, null, { timeout: timeoutMs });
 
-        const status = await page.locator('#status').textContent();
-        const tone = await page.locator('#status').getAttribute('data-tone');
-        if (tone !== 'success') {
-            throw new Error(status || '视频导出失败');
-        }
+            const status = await page.locator('#status').textContent();
+            const tone = await page.locator('#status').getAttribute('data-tone');
+            if (tone !== 'success') {
+                throw new Error(status || '视频导出失败');
+            }
 
-        const actualControls = await collectVideoExportControls(page);
-        const buffer = await blobUrlToBuffer(page);
-        await mkdir(path.dirname(outputPath), { recursive: true });
-        await writeFile(outputPath, buffer);
+            const actualControls = await collectVideoExportControls(page);
+            const buffer = await blobUrlToBuffer(page);
+            await mkdir(path.dirname(outputPath), { recursive: true });
+            await writeFile(outputPath, buffer);
 
-        return {
-            inputPath,
-            outputPath,
-            denoiseBackend,
-            actualDenoiseBackend: actualControls.denoiseBackend,
-            actualControls,
-            alphaGain: Number.isFinite(alphaGain) ? alphaGain : undefined,
-            alphaProfile: alphaProfile || undefined,
-            alphaLowScale: Number.isFinite(alphaLowScale) ? alphaLowScale : undefined,
-            alphaBodyScale: Number.isFinite(alphaBodyScale) ? alphaBodyScale : undefined,
-            alphaEdgeBoost: Number.isFinite(alphaEdgeBoost) ? alphaEdgeBoost : undefined,
-            alphaLocalRegion: alphaLocalRegion || undefined,
-            alphaLocalLowScale: Number.isFinite(alphaLocalLowScale) ? alphaLocalLowScale : undefined,
-            alphaLocalBodyScale: Number.isFinite(alphaLocalBodyScale) ? alphaLocalBodyScale : undefined,
-            adaptiveAlpha,
-            edgeDenoiseStrength: Number.isFinite(edgeDenoiseStrength) ? edgeDenoiseStrength : undefined,
-            residualCleanupStrength: Number.isFinite(residualCleanupStrength) ? residualCleanupStrength : undefined,
-            videoBitrate: Number.isFinite(videoBitrate) ? videoBitrate : undefined,
-            bytes: buffer.byteLength,
-            status
-        };
+            return {
+                inputPath,
+                outputPath,
+                pageUrl,
+                denoiseBackend,
+                actualDenoiseBackend: actualControls.denoiseBackend,
+                actualControls,
+                alphaGain: Number.isFinite(alphaGain) ? alphaGain : undefined,
+                alphaProfile: alphaProfile || undefined,
+                alphaLowScale: Number.isFinite(alphaLowScale) ? alphaLowScale : undefined,
+                alphaBodyScale: Number.isFinite(alphaBodyScale) ? alphaBodyScale : undefined,
+                alphaEdgeBoost: Number.isFinite(alphaEdgeBoost) ? alphaEdgeBoost : undefined,
+                alphaLocalRegion: alphaLocalRegion || undefined,
+                alphaLocalLowScale: Number.isFinite(alphaLocalLowScale) ? alphaLocalLowScale : undefined,
+                alphaLocalBodyScale: Number.isFinite(alphaLocalBodyScale) ? alphaLocalBodyScale : undefined,
+                adaptiveAlpha,
+                edgeDenoiseStrength: Number.isFinite(edgeDenoiseStrength) ? edgeDenoiseStrength : undefined,
+                residualCleanupStrength: Number.isFinite(residualCleanupStrength) ? residualCleanupStrength : undefined,
+                allenkFdncnnSigma: Number.isFinite(allenkFdncnnSigma) ? allenkFdncnnSigma : undefined,
+                allenkFdncnnPadding: Number.isFinite(allenkFdncnnPadding) ? allenkFdncnnPadding : undefined,
+                videoBitrate: Number.isFinite(videoBitrate) ? videoBitrate : undefined,
+                bytes: buffer.byteLength,
+                status
+            };
+        });
     } finally {
         await browser.close();
     }

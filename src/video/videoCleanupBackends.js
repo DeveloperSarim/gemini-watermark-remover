@@ -1,8 +1,10 @@
 import {
     blendAllenkDenoisedRoi,
     calculateAllenkRuntimeRoi,
+    calculateAllenkVirtualPaddedRoi,
     createAllenkGradientMask,
     embedAllenkRoiWeights,
+    extractAllenkVirtualImageData,
     normalizeAllenkFdncnnOptions
 } from '../core/allenkFdncnnDenoise.js';
 
@@ -1057,17 +1059,47 @@ function prepareAllenkFdncnnRuntimeInput(ctx, position, alphaMap, {
     targetHeight = null
 } = {}) {
     const options = normalizeAllenkFdncnnOptions({ sigma, strength, padding });
-    const paddedRoi = calculateAllenkRuntimeRoi({
-        imageWidth: ctx.canvas.width,
-        imageHeight: ctx.canvas.height,
-        region: position,
-        padding: options.padding,
-        targetWidth,
-        targetHeight
-    });
+    const hasFixedRuntimeSize = Number.isInteger(targetWidth) && targetWidth > 0 &&
+        Number.isInteger(targetHeight) && targetHeight > 0;
+    const useVirtualRoi = hasFixedRuntimeSize && Math.round(position.width) !== Math.round(position.height);
+    const paddedRoi = useVirtualRoi
+        ? calculateAllenkVirtualPaddedRoi({
+            imageWidth: ctx.canvas.width,
+            imageHeight: ctx.canvas.height,
+            region: position,
+            padding: options.padding,
+            targetWidth,
+            targetHeight
+        })
+        : calculateAllenkRuntimeRoi({
+            imageWidth: ctx.canvas.width,
+            imageHeight: ctx.canvas.height,
+            region: position,
+            padding: options.padding,
+            targetWidth,
+            targetHeight
+        });
     if (!paddedRoi) return null;
 
-    const padded = ctx.getImageData(paddedRoi.x, paddedRoi.y, paddedRoi.width, paddedRoi.height);
+    const visible = paddedRoi.visible || {
+        x: paddedRoi.x,
+        y: paddedRoi.y,
+        width: paddedRoi.width,
+        height: paddedRoi.height,
+        offsetX: 0,
+        offsetY: 0
+    };
+    const visibleImageData = ctx.getImageData(visible.x, visible.y, visible.width, visible.height);
+    const padded = useVirtualRoi
+        ? extractAllenkVirtualImageData({
+            imageData: visibleImageData,
+            imageX: visible.x,
+            imageY: visible.y,
+            canvasWidth: ctx.canvas.width,
+            canvasHeight: ctx.canvas.height,
+            roi: paddedRoi
+        })
+        : visibleImageData;
     const roiWeights = createAllenkGradientMask({
         alphaMap,
         width: position.width,
@@ -1085,8 +1117,66 @@ function prepareAllenkFdncnnRuntimeInput(ctx, position, alphaMap, {
     return {
         options,
         paddedRoi,
+        visible,
         padded,
         weights
+    };
+}
+
+function cropAllenkVisiblePatch(prepared, data) {
+    const visible = prepared.visible || prepared.paddedRoi?.visible;
+    const padded = prepared.padded;
+    if (
+        !visible ||
+        !padded?.data ||
+        visible.width === padded.width &&
+            visible.height === padded.height &&
+            visible.offsetX === 0 &&
+            visible.offsetY === 0
+    ) {
+        if (padded?.data && data && padded.data.length === data.length) {
+            padded.data.set(data);
+        }
+        return {
+            x: prepared.paddedRoi.x,
+            y: prepared.paddedRoi.y,
+            imageData: padded
+        };
+    }
+
+    const width = Math.max(0, Math.round(visible.width));
+    const height = Math.max(0, Math.round(visible.height));
+    const offsetX = Math.max(0, Math.round(visible.offsetX || 0));
+    const offsetY = Math.max(0, Math.round(visible.offsetY || 0));
+    const output = new Uint8ClampedArray(width * height * 4);
+    for (let y = 0; y < height; y++) {
+        const srcY = offsetY + y;
+        if (srcY < 0 || srcY >= padded.height) continue;
+        for (let x = 0; x < width; x++) {
+            const srcX = offsetX + x;
+            if (srcX < 0 || srcX >= padded.width) continue;
+            const src = (srcY * padded.width + srcX) * 4;
+            const dst = (y * width + x) * 4;
+            output[dst] = data[src] || 0;
+            output[dst + 1] = data[src + 1] || 0;
+            output[dst + 2] = data[src + 2] || 0;
+            output[dst + 3] = data[src + 3] ?? 255;
+        }
+    }
+
+    const ImageDataCtor = typeof padded.constructor === 'function' && padded.constructor !== Object
+        ? padded.constructor
+        : typeof ImageData === 'function'
+            ? ImageData
+            : null;
+    const imageData = ImageDataCtor
+        ? new ImageDataCtor(output, width, height)
+        : { width, height, data: output };
+
+    return {
+        x: visible.x,
+        y: visible.y,
+        imageData
     };
 }
 
@@ -1100,8 +1190,8 @@ function applyAllenkFdncnnDenoisedPatch(ctx, prepared, denoised) {
         height: prepared.padded.height
     });
 
-    prepared.padded.data.set(blended);
-    ctx.putImageData(prepared.padded, prepared.paddedRoi.x, prepared.paddedRoi.y);
+    const patch = cropAllenkVisiblePatch(prepared, blended);
+    ctx.putImageData(patch.imageData, patch.x, patch.y);
 }
 
 function clonePaddedImageData(imageData) {

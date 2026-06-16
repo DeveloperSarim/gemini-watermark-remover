@@ -84,6 +84,13 @@ test('parseArgs should accept ONNX export options', () => {
     assert.equal(DEFAULT_ROI_SIZE, 72);
 });
 
+test('parseArgs should accept rectangular ONNX export options', () => {
+    const args = parseArgs(['--roi-width', '87', '--roi-height', '74']);
+    assert.equal(args.roiWidth, 87);
+    assert.equal(args.roiHeight, 74);
+    assert.equal(args.roiSize, 72);
+});
+
 test('exportAllenkFdncnnOnnxArtifact should write ONNX and manifest files', async () => {
     await rm(FIXTURE_DIR, { recursive: true, force: true });
     const inputDir = path.join(FIXTURE_DIR, 'input');
@@ -119,4 +126,37 @@ test('exportAllenkFdncnnOnnxArtifact should write ONNX and manifest files', asyn
     assert.equal(manifest.model.metadata.nodeCount, 1);
     assert.match(text, /Conv/);
     assert.match(text, /fdncnn_output/);
+});
+
+test('exportAllenkFdncnnOnnxArtifact should write rectangular ONNX artifacts', async () => {
+    await rm(FIXTURE_DIR, { recursive: true, force: true });
+    const inputDir = path.join(FIXTURE_DIR, 'input');
+    const outputDir = path.join(FIXTURE_DIR, 'rect-output');
+    await mkdir(inputDir, { recursive: true });
+
+    const paramPath = path.join(inputDir, 'model_core_fp16.param.bin');
+    const binPath = path.join(inputDir, 'model_core_fp16.bin');
+    await writeFile(paramPath, createTinyParamBuffer());
+    await writeFile(binPath, createTinyBinBuffer());
+    await writeFile(path.join(inputDir, 'manifest.json'), `${JSON.stringify({
+        upstream: 'allenk/GeminiWatermarkTool',
+        license: 'MIT',
+        model: {
+            name: 'FDnCNN Color FP16',
+            runtime: 'NCNN',
+            param: { path: path.relative(process.cwd(), paramPath) },
+            bin: { path: path.relative(process.cwd(), binPath) }
+        }
+    }, null, 2)}\n`);
+
+    const result = await exportAllenkFdncnnOnnxArtifact({
+        inputDir,
+        outputDir,
+        roiWidth: 4,
+        roiHeight: 3
+    });
+    const manifest = JSON.parse(await readFile(result.manifestPath, 'utf8'));
+
+    assert.equal(path.basename(result.onnxPath), 'model_core_fp32_4x3.onnx');
+    assert.deepEqual(manifest.model.metadata.inputShape, [1, 4, 3, 4]);
 });

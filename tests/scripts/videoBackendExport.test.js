@@ -8,6 +8,17 @@ test('export-video-backend-variant should report actual UI controls after auto p
   assert.match(source, /collectVideoExportControls/);
   assert.match(source, /setNumericInputValue/);
   assert.match(source, /step: 'any'/);
+  assert.match(source, /#alphaGain/);
+  assert.doesNotMatch(source, /locator\('#alphaGain'\)\.fill/);
   assert.match(source, /actualDenoiseBackend: actualControls\.denoiseBackend/);
   assert.match(source, /allowLowConfidence/);
+  assert.match(source, /withLocalStaticPreviewPage/);
+  assert.match(source, /pageUrl/);
+});
+
+test('video app should not reset Veo text preset when debug backend override is already selected', () => {
+  const source = readFileSync(new URL('../../src/video-app.js', import.meta.url), 'utf8');
+
+  assert.match(source, /window\.__gwrVideoOverrideDenoiseBackend/);
+  assert.match(source, /els\.denoiseBackend\.value !== window\.__gwrVideoOverrideDenoiseBackend/);
 });

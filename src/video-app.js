@@ -196,6 +196,26 @@ function getAllenkFdncnnTemporalReuseConfig(runtime) {
     };
 }
 
+function resolveDetectionAllenkFdncnnSigma(detection) {
+    if (Number.isFinite(window.__gwrVideoOverrideAllenkFdncnnSigma)) {
+        return Math.max(0, Math.min(150, window.__gwrVideoOverrideAllenkFdncnnSigma));
+    }
+    if (detection?.watermarkKind === 'veo-text') {
+        return detection.template?.cleanup?.runtimeFdncnnSigma ?? 75;
+    }
+    return 75;
+}
+
+function resolveDetectionAllenkFdncnnPadding(detection, runtimeProfile) {
+    if (Number.isFinite(window.__gwrVideoOverrideAllenkFdncnnPadding)) {
+        return Math.max(0, Math.round(window.__gwrVideoOverrideAllenkFdncnnPadding));
+    }
+    if (detection?.watermarkKind === 'veo-text' && Number.isFinite(detection.template?.cleanup?.allenkFdncnnPadding)) {
+        return detection.template.cleanup.allenkFdncnnPadding;
+    }
+    return runtimeProfile.padding;
+}
+
 function setProgress(progress, label) {
     const pct = Number.isFinite(progress) ? Math.max(0, Math.min(100, Math.round(progress * 100))) : 0;
     els.progressBar.style.width = `${pct}%`;
@@ -357,14 +377,22 @@ function renderDetection(detection) {
         return;
     }
 
-    const best = detection.summary.best;
+    const best = detection.summary?.best || {};
+    const bestLabel = detection.watermarkKind === 'veo-text'
+        ? (best.templateId || detection.template?.id || 'Veo text')
+        : (best.label || best.candidateId || detection.candidate?.label || 'unknown');
+    const bestScore = Number.isFinite(best.meanConfidence)
+        ? best.meanConfidence
+        : Number.isFinite(best.meanNcc)
+            ? best.meanNcc
+            : null;
     els.detection.innerHTML = `
         <dl>
-            <div><dt>候选</dt><dd>${best.label}</dd></div>
+            <div><dt>候选</dt><dd>${bestLabel}</dd></div>
             <div><dt>位置</dt><dd>${detection.position.x}, ${detection.position.y}</dd></div>
             <div><dt>大小</dt><dd>${detection.position.width} x ${detection.position.height}</dd></div>
-            <div><dt>均值分数</dt><dd>${best.meanConfidence.toFixed(3)}</dd></div>
-            <div><dt>投票</dt><dd>${best.votes}/${detection.summary.frameCount}</dd></div>
+            <div><dt>均值分数</dt><dd>${Number.isFinite(bestScore) ? bestScore.toFixed(3) : '-'}</dd></div>
+            <div><dt>投票</dt><dd>${best.votes || 0}/${detection.summary?.frameCount || 0}</dd></div>
             <div><dt>状态</dt><dd>${detection.isConfident ? '可导出' : '低置信'}</dd></div>
         </dl>
     `;
@@ -526,6 +554,11 @@ async function runExport() {
         applyDebugControlOverrides();
         const denoiseBackend = els.denoiseBackend.value || DEFAULT_DENOISE_BACKEND;
         const allenkFdncnnRuntimeProfile = resolveAllenkFdncnnRuntimeProfile(detectionPayload?.detection?.position);
+        const allenkFdncnnSigma = resolveDetectionAllenkFdncnnSigma(detectionPayload?.detection);
+        const allenkFdncnnPadding = resolveDetectionAllenkFdncnnPadding(
+            detectionPayload?.detection,
+            allenkFdncnnRuntimeProfile
+        );
         const allenkFdncnnRuntime = await resolveExportDenoiseRuntime(denoiseBackend, allenkFdncnnRuntimeProfile);
         const allenkFdncnnTemporalReuse = getAllenkFdncnnTemporalReuseConfig(allenkFdncnnRuntime);
         const debugAlphaOptions = getDebugAlphaOptions();
@@ -546,8 +579,8 @@ async function runExport() {
             detection: detectionPayload,
             allowLowConfidence: els.allowLowConfidence.checked,
             allenkFdncnnRuntime,
-            allenkFdncnnSigma: 75,
-            allenkFdncnnPadding: allenkFdncnnRuntimeProfile.padding,
+            allenkFdncnnSigma,
+            allenkFdncnnPadding,
             allenkFdncnnTemporalReuse,
             onProgress: ({ phase, progress, processedFrames, metadata, detection, aiDenoiseFrames, aiReuseFrames }) => {
                 if (jobId !== state.jobId) return;
@@ -667,6 +700,12 @@ function applyAutomaticPreset(detection = state.detection, metadata = state.meta
 }
 
 function applyDebugControlOverrides() {
+    if (typeof window.__gwrVideoOverrideDenoiseBackend === 'string') {
+        if (els.denoiseBackend.value !== window.__gwrVideoOverrideDenoiseBackend) {
+            els.denoiseBackend.value = window.__gwrVideoOverrideDenoiseBackend;
+            els.denoiseBackend.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    }
     if (typeof window.__gwrVideoOverrideAllowLowConfidence === 'boolean') {
         els.allowLowConfidence.checked = window.__gwrVideoOverrideAllowLowConfidence;
     }

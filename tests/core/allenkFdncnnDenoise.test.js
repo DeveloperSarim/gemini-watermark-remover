@@ -7,11 +7,14 @@ import {
     buildAllenkFdncnnInput,
     calculateAllenkPaddedRoi,
     calculateAllenkRuntimeRoi,
+    calculateAllenkVirtualPaddedRoi,
     convertAllenkFdncnnOutputToRgba,
     createAllenkGradientMask,
     embedAllenkRoiWeights,
+    extractAllenkVirtualImageData,
     normalizeAllenkFdncnnOptions
 } from '../../src/core/allenkFdncnnDenoise.js';
+import { getVeoTextTemplateAlphaMap } from '../../src/video/veoTextWatermarkTemplates.js';
 
 test('ALLENK_FDNCNN_MODEL should document the imported allenk model contract', () => {
     assert.equal(ALLENK_FDNCNN_MODEL.upstream, 'allenk/GeminiWatermarkTool');
@@ -118,6 +121,22 @@ test('createAllenkGradientMask should resize square alpha maps before computing 
     assert.ok(mask[3 * targetSize + 3] > mask[3 * targetSize + 0]);
 });
 
+test('createAllenkGradientMask should match Allenk OpenCV edge handling for Veo text', () => {
+    const width = 23;
+    const height = 10;
+    const mask = createAllenkGradientMask({
+        alphaMap: getVeoTextTemplateAlphaMap('veo-text-23x10'),
+        width,
+        height,
+        strength: 1
+    });
+
+    const activePixels = [...mask].filter((value) => value > 0.01).length;
+    assert.equal(activePixels, 230);
+    assert.ok(Math.abs(mask[22] - 0.777641) < 0.015, `top-right=${mask[22]}`);
+    assert.ok(Math.abs(mask.reduce((sum, value) => sum + value, 0) - 210.456879) < 0.75);
+});
+
 test('calculateAllenkPaddedRoi should clamp padding and report inner region', () => {
     const padded = calculateAllenkPaddedRoi({
         imageWidth: 100,
@@ -136,6 +155,68 @@ test('calculateAllenkPaddedRoi should clamp padding and report inner region', ()
             y: 16,
             width: 10,
             height: 10
+        }
+    });
+});
+
+test('calculateAllenkVirtualPaddedRoi should preserve off-canvas Veo text padding', () => {
+    const roi = calculateAllenkVirtualPaddedRoi({
+        imageWidth: 720,
+        imageHeight: 1280,
+        region: { x: 682, y: 1254, width: 23, height: 10 },
+        padding: 32
+    });
+
+    assert.deepEqual(roi, {
+        x: 650,
+        y: 1222,
+        width: 87,
+        height: 74,
+        inner: {
+            x: 32,
+            y: 32,
+            width: 23,
+            height: 10
+        },
+        visible: {
+            x: 650,
+            y: 1222,
+            width: 70,
+            height: 58,
+            offsetX: 0,
+            offsetY: 0
+        }
+    });
+});
+
+test('calculateAllenkVirtualPaddedRoi should honor explicit Allenk video runtime dimensions', () => {
+    const roi = calculateAllenkVirtualPaddedRoi({
+        imageWidth: 720,
+        imageHeight: 1280,
+        region: { x: 682, y: 1254, width: 23, height: 10 },
+        padding: 32,
+        targetWidth: 86,
+        targetHeight: 74
+    });
+
+    assert.deepEqual(roi, {
+        x: 650,
+        y: 1222,
+        width: 86,
+        height: 74,
+        inner: {
+            x: 32,
+            y: 32,
+            width: 23,
+            height: 10
+        },
+        visible: {
+            x: 650,
+            y: 1222,
+            width: 70,
+            height: 58,
+            offsetX: 0,
+            offsetY: 0
         }
     });
 });
@@ -186,6 +267,70 @@ test('calculateAllenkRuntimeRoi should keep bounded ROIs when the canvas cannot 
             height: 48
         }
     });
+});
+
+test('extractAllenkVirtualImageData should replicate edge pixels for off-canvas padding', () => {
+    const source = {
+        width: 3,
+        height: 2,
+        data: new Uint8ClampedArray([
+            0, 0, 0, 255,
+            10, 0, 0, 255,
+            20, 0, 0, 255,
+            100, 0, 0, 255,
+            110, 0, 0, 255,
+            120, 0, 0, 255
+        ])
+    };
+
+    const extracted = extractAllenkVirtualImageData({
+        imageData: source,
+        canvasWidth: source.width,
+        canvasHeight: source.height,
+        roi: {
+            x: 1,
+            y: 1,
+            width: 4,
+            height: 3
+        }
+    });
+
+    assert.equal(extracted.width, 4);
+    assert.equal(extracted.height, 3);
+    const red = [];
+    for (let i = 0; i < extracted.data.length; i += 4) {
+        red.push(extracted.data[i]);
+    }
+    assert.deepEqual(red, [
+        110, 120, 120, 120,
+        110, 120, 120, 120,
+        110, 120, 120, 120
+    ]);
+});
+
+test('extractAllenkVirtualImageData should preserve ImageData-compatible constructors', () => {
+    class FakeImageData {
+        constructor(data, width, height) {
+            this.data = data;
+            this.width = width;
+            this.height = height;
+        }
+    }
+
+    const source = new FakeImageData(new Uint8ClampedArray([
+        1, 2, 3, 255,
+        4, 5, 6, 255
+    ]), 2, 1);
+
+    const extracted = extractAllenkVirtualImageData({
+        imageData: source,
+        canvasWidth: source.width,
+        canvasHeight: source.height,
+        roi: { x: 0, y: 0, width: 2, height: 1 }
+    });
+
+    assert.ok(extracted instanceof FakeImageData);
+    assert.deepEqual([...extracted.data], [...source.data]);
 });
 
 test('embedAllenkRoiWeights should place ROI weights into padded coordinates and blur boundary', () => {

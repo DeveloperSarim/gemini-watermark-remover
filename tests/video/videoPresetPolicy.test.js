@@ -75,6 +75,20 @@ test('getAutomaticVideoPresetConfig should keep normal detections on conservativ
     assert.deepEqual(preset, getStandardAutoPresetConfig());
 });
 
+test('getAutomaticVideoPresetConfig should tune cleanup for Veo text detections', () => {
+    const preset = getAutomaticVideoPresetConfig({
+        isConfident: true,
+        watermarkKind: 'veo-text',
+        position: { width: 23, height: 10, marginRight: 15, marginBottom: 16 }
+    }, { width: 720, height: 1280 });
+
+    assert.equal(preset.id, 'veo-text-auto');
+    assert.equal(preset.denoiseBackend, VIDEO_DENOISE_BACKENDS.ALLENK_FDNCNN_BROWSER_SPIKE);
+    assert.equal(preset.edgeDenoiseStrength, 1.45);
+    assert.equal(preset.residualCleanupStrength, 0.9);
+    assert.equal(preset.allowLowConfidence, false);
+});
+
 test('getAutomaticVideoPresetConfig should switch relocated detections to review preset', () => {
     const preset = getAutomaticVideoPresetConfig({
         isConfident: true,

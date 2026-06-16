@@ -75,6 +75,20 @@ test('exportAllenkFdncnnOnnx should create a fixed-shape ONNX model', () => {
     assert.match(text, /conv1\.weight/);
 });
 
+test('exportAllenkFdncnnOnnx should create a rectangular fixed-shape ONNX model', () => {
+    const fixture = createTinyWeightFixture();
+    const exported = exportAllenkFdncnnOnnx({
+        ...fixture,
+        roiWidth: 4,
+        roiHeight: 3
+    });
+
+    assert.deepEqual(exported.metadata.inputShape, [1, 4, 3, 4]);
+    assert.deepEqual(exported.metadata.outputShape, [1, 1, 3, 4]);
+    assert.equal(exported.metadata.roiWidth, 4);
+    assert.equal(exported.metadata.roiHeight, 3);
+});
+
 test('exportAllenkFdncnnOnnx should reject missing weights', () => {
     assert.throws(
         () => exportAllenkFdncnnOnnx({ bin: new Uint8Array(), weightLayout: { segments: [] } }),

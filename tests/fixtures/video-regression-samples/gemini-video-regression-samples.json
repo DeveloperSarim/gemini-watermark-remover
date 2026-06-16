@@ -1,0 +1,46 @@
+{
+  "name": "gemini-video-regression-samples",
+  "description": "Real Gemini/Veo 720p inset watermark samples reported on 2026-06-15.",
+  "inputs": [
+    {
+      "id": "20260615",
+      "input": "src/assets/video-samples/20260615.mp4",
+      "candidateId": "veo-720p-3-inset",
+      "timestamps": [1, 2.5, 4, 5.5, 7],
+      "thresholds": {
+        "maxAllowedConfidence": 0.08,
+        "minReductionRatio": 0.75
+      }
+    },
+    {
+      "id": "20260615-2",
+      "input": "src/assets/video-samples/20260615-2.mp4",
+      "candidateId": "veo-720p-3-inset",
+      "timestamps": [1, 2.5, 4, 5.5, 7],
+      "thresholds": {
+        "maxAllowedConfidence": 0.08,
+        "minReductionRatio": 0.75
+      }
+    },
+    {
+      "id": "20260615-3",
+      "input": "src/assets/video-samples/20260615-3.mp4",
+      "candidateId": "veo-720x1280-portrait-relocated-48",
+      "timestamps": [1, 2.5, 4, 5.5, 7],
+      "thresholds": {
+        "maxAllowedConfidence": 0.08,
+        "minReductionRatio": 0.75
+      }
+    },
+    {
+      "id": "veo-20260615",
+      "input": "src/assets/video-samples/veo-20260615.mp4",
+      "candidateId": "veo-text-23x10:682:1254",
+      "timestamps": [1, 3, 5, 7],
+      "thresholds": {
+        "maxAllowedConfidence": 0.08,
+        "minReductionRatio": 0.75
+      }
+    }
+  ]
+}
