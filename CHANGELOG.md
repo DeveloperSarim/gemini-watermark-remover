@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.27 - 2026-06-20
+
+### Video
+
+- Improved relocated portrait Veo watermark cleanup by selecting the legacy alpha profile for the newly observed `20260619.mp4` sample.
+- Tuned the relocated review preset to lower residual watermark edges while keeping the cleanup bounded to the detected footprint.
+
+### Quality
+
+- Added `20260619.mp4` as a committed video regression fixture so the relocated portrait watermark behavior is pinned in tests.
+- Added ROI-level alpha regression coverage and re-verified the five-sample video regression batch with all samples passing.
+
 ## 1.0.26 - 2026-06-19
 
 ### Watermark Removal
