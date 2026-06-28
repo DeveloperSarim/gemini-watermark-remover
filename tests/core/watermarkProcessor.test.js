@@ -43,6 +43,10 @@ test('processWatermarkImageData should run in Node without asset imports and rec
     assert.equal(result.meta.passStopReason, 'residual-low');
     assert.ok(Array.isArray(result.meta.passes));
     assert.ok(result.meta.detection.processedSpatialScore < 0.25, `score=${result.meta.detection.processedSpatialScore}`);
+    assert.equal(result.meta.decisionPath?.decision, 'accept');
+    assert.equal(result.meta.decisionPath?.detectionCandidate?.config?.logoSize, 48);
+    assert.equal(result.meta.decisionPath?.alphaTrial?.alphaGain, result.meta.alphaGain);
+    assert.equal(result.meta.decisionPath?.evaluationDecision, 'accepted');
 });
 
 test('processWatermarkImageData should not attempt extra passes when the first pass already clears a single watermark layer', () => {
@@ -76,6 +80,9 @@ test('processWatermarkImageData should interpolate adaptive alpha maps when getA
 
     assert.equal(result.meta.applied, false);
     assert.equal(result.meta.skipReason, 'no-watermark-detected');
+    assert.equal(result.meta.decisionPath?.decision, 'reject');
+    assert.equal(result.meta.decisionPath?.blockedGate, 'no-watermark-detected');
+    assert.equal(result.meta.decisionPath?.evaluation?.decision, 'reject');
 });
 
 test('processWatermarkImageData should not use template warp in fixed-core mode', () => {
@@ -623,6 +630,13 @@ test('processWatermarkImageData should rescue quantized negative body residuals 
         String(result.meta.source).includes('+quantized-body-correction'),
         `expected quantized body correction, source=${result.meta.source}`
     );
+    assert.ok(
+        result.meta.decisionPath?.repairTrial?.params?.some((stage) => (
+            stage.stage === 'quantized-body-correction' &&
+            stage.repairStrategy === 'quantized-body-correction'
+        )),
+        `expected quantized body repair trial, decisionPath=${JSON.stringify(result.meta.decisionPath)}`
+    );
     assert.equal(
         result.meta.detection.residualVisibility?.visible,
         false,
@@ -719,6 +733,13 @@ test('processWatermarkImageData should rescue low-texture 48px boundary residual
         String(result.meta.source).includes('+boundary-repair-rescue'),
         `expected boundary repair rescue, source=${result.meta.source}`
     );
+    assert.ok(
+        result.meta.decisionPath?.repairTrial?.params?.some((stage) => (
+            stage.stage === 'known-48-boundary-repair-rescue' &&
+            stage.repairStrategy === 'boundary-repair'
+        )),
+        `expected boundary repair trial, decisionPath=${JSON.stringify(result.meta.decisionPath)}`
+    );
     assert.equal(
         result.meta.detection.residualVisibility?.visible,
         false,
@@ -786,6 +807,13 @@ test('processWatermarkImageData should rescue dark halo residuals with conservat
             String(result.meta.source).includes('+dark-halo-rescue'),
             `expected dark halo rescue, source=${result.meta.source}`
         );
+        assert.ok(
+            result.meta.decisionPath?.repairTrial?.params?.some((stage) => (
+                stage.stage === 'dark-halo-low-logo-rescue' &&
+                stage.repairStrategy === 'dark-halo-repair'
+            )),
+            `expected dark halo repair trial, decisionPath=${JSON.stringify(result.meta.decisionPath)}`
+        );
         assert.equal(
             result.meta.detection.residualVisibility?.visible,
             false,
@@ -818,6 +846,13 @@ test('processWatermarkImageData should rescue issue 93 canonical 96px positive h
     assert.ok(
         String(result.meta.source).includes('+canonical-96-positive-halo-rescue'),
         `expected canonical 96 positive halo rescue, source=${result.meta.source}`
+    );
+    assert.ok(
+        result.meta.decisionPath?.repairTrial?.params?.some((stage) => (
+            stage.stage === 'canonical-96-positive-halo-rescue' &&
+            stage.repairStrategy === 'canonical-96-positive-halo-repair'
+        )),
+        `expected canonical 96 positive halo repair trial, decisionPath=${JSON.stringify(result.meta.decisionPath)}`
     );
     assert.equal(
         result.meta.detection.residualVisibility?.visible,
@@ -860,6 +895,19 @@ test('processWatermarkImageData should allow stronger mid-alpha on strong 48px l
     assert.ok(
         String(result.meta.source).includes('+fine-alpha'),
         `expected fine-alpha source, got ${result.meta.source}`
+    );
+    assert.equal(
+        result.meta.decisionPath?.alphaTrial?.strategy,
+        'over-subtraction-fine-alpha',
+        `decisionPath=${JSON.stringify(result.meta.decisionPath)}`
+    );
+    assert.equal(result.meta.decisionPath?.alphaTrial?.migrationStage, 'phase2-alpha-trial');
+    assert.ok(
+        result.meta.decisionPath?.alphaTrial?.acceptedStrategies?.some((event) => (
+            event.strategy === 'over-subtraction-fine-alpha' &&
+            event.stage === 'weak-positive-residual-fine-alpha'
+        )),
+        `expected accepted over-subtraction fine-alpha event, decisionPath=${JSON.stringify(result.meta.decisionPath)}`
     );
     assert.ok(
         Math.abs(result.meta.detection.processedSpatialScore) <= 0.16,
@@ -1326,6 +1374,22 @@ test('processWatermarkImageData should keep strong 20260608 catalog evidence ahe
     assert.equal(result.meta.alphaAdjustmentStages?.[0]?.stage, 'dark-catalog-fine-alpha');
     assert.equal(result.meta.alphaAdjustmentStages?.[0]?.fromAlphaGain, 1);
     assert.equal(result.meta.alphaAdjustmentStages?.[0]?.toAlphaGain, 0.95);
+    assert.equal(result.meta.alphaAdjustmentStages?.[0]?.alphaStrategy, 'dark-catalog-fine-alpha');
+    assert.equal(
+        result.meta.decisionPath?.alphaTrial?.strategy,
+        'dark-catalog-fine-alpha',
+        `decisionPath=${JSON.stringify(result.meta.decisionPath)}`
+    );
+    assert.equal(result.meta.decisionPath?.alphaTrial?.migrationStage, 'phase2-alpha-trial');
+    assert.ok(
+        result.meta.decisionPath?.alphaTrial?.acceptedStrategies?.some((event) => (
+            event.strategy === 'dark-catalog-fine-alpha' &&
+            event.stage === 'dark-catalog-fine-alpha' &&
+            event.fromAlphaGain === 1 &&
+            event.toAlphaGain === 0.95
+        )),
+        `expected accepted dark catalog fine-alpha event, decisionPath=${JSON.stringify(result.meta.decisionPath)}`
+    );
     assert.ok(
         String(result.meta.source).includes('catalog'),
         `expected catalog source, got ${result.meta.source}`
@@ -1459,6 +1523,18 @@ test('processWatermarkImageData should cleanup residual edges on known 48px larg
             String(result.meta.source).includes('+edge-cleanup'),
             `${fileName} expected known 48px residual edge cleanup, source=${result.meta.source}`
         );
+        assert.equal(result.meta.decisionPath?.repairTrial?.applied, true);
+        assert.ok(
+            result.meta.decisionPath?.repairTrial?.params?.some((stage) => (
+                stage.repairStrategy === 'edge-cleanup' &&
+                stage.stage === 'known-48-edge-cleanup'
+            )),
+            `${fileName} expected edge-cleanup repair trial, decisionPath=${JSON.stringify(result.meta.decisionPath)}`
+        );
+        assert.ok(
+            result.meta.decisionPath?.repairTrial?.gates?.stages?.includes('known-48-edge-cleanup'),
+            `${fileName} expected edge-cleanup gate stage, decisionPath=${JSON.stringify(result.meta.decisionPath)}`
+        );
         assert.ok(
             Math.abs(result.meta.detection.processedSpatialScore) <= 0.12,
             `${fileName} spatial residual=${result.meta.detection.processedSpatialScore}`
@@ -1494,6 +1570,13 @@ test('processWatermarkImageData should apply mid-core bias only after safe known
         assert.ok(
             result.meta.alphaAdjustmentStages?.some((stage) => stage.stage === 'known-48-mid-core-bias-correction'),
             `${fileName} expected mid-core bias stage, stages=${JSON.stringify(result.meta.alphaAdjustmentStages)}`
+        );
+        assert.ok(
+            result.meta.decisionPath?.repairTrial?.params?.some((stage) => (
+                stage.stage === 'known-48-mid-core-bias-correction' &&
+                stage.repairStrategy === 'mid-core-bias-correction'
+            )),
+            `${fileName} expected mid-core bias repair trial, decisionPath=${JSON.stringify(result.meta.decisionPath)}`
         );
         assert.ok(
             result.meta.detection.residualVisibility.positiveHaloLum <= 8,
@@ -1603,6 +1686,14 @@ test('processWatermarkImageData should flat-fill residual edges only on smooth k
     );
     const flatFillStage = result.meta.alphaAdjustmentStages?.find((stage) => stage.stage === 'known-48-flat-background-fill');
     assert.ok(flatFillStage, `expected flat-fill stage, stages=${JSON.stringify(result.meta.alphaAdjustmentStages)}`);
+    assert.equal(flatFillStage.repairStrategy, 'known-48-flat-fill');
+    assert.ok(
+        result.meta.decisionPath?.repairTrial?.params?.some((stage) => (
+            stage.stage === 'known-48-flat-background-fill' &&
+            stage.repairStrategy === 'known-48-flat-fill'
+        )),
+        `expected known-48 flat-fill repair trial, decisionPath=${JSON.stringify(result.meta.decisionPath)}`
+    );
     assert.ok(
         flatFillStage.afterGradientScore <= flatFillStage.beforeGradientScore - 0.045,
         `expected flat-fill to suppress residual gradient, stage=${JSON.stringify(flatFillStage)}`
@@ -1662,6 +1753,32 @@ test('processWatermarkImageData should remove the 2816x1536 issue #68 watermark 
     assert.ok(
         result.meta.detection.processedGradientScore < 0.05,
         `expected residual gradient < 0.05, got ${result.meta.detection.processedGradientScore}, source=${result.meta.source}`
+    );
+});
+
+test('processWatermarkImageData should reject issue #92 weak 192px-margin text-overlap false positive', async () => {
+    const alpha48 = calculateAlphaMap(await decodeImageDataInNode(path.resolve('src/assets/bg_48.png')));
+    const alpha96 = calculateAlphaMap(await decodeImageDataInNode(path.resolve('src/assets/bg_96.png')));
+    const alpha96NewMargin = calculateAlphaMap(await decodeImageDataInNode(path.resolve('src/assets/bg_96_20260520.png')));
+    const imageData = await decodeImageDataInNode(path.resolve('tests/fixtures/issue92-new-margin-default-alpha.png'));
+
+    const result = processWatermarkImageData(imageData, {
+        alpha48,
+        alpha96,
+        alpha96Variants: {
+            '20260520': alpha96NewMargin
+        },
+        adaptiveMode: 'never',
+        getAlphaMap: (size) => size === 48 ? alpha48 : interpolateAlphaMap(alpha96, 96, size)
+    });
+
+    assert.ok(result.meta.applied, `skipReason=${result.meta.skipReason}`);
+    assert.notDeepEqual(result.meta.position, { x: 2528, y: 1248, width: 96, height: 96 });
+    assert.notDeepEqual(result.meta.config, { logoSize: 96, marginRight: 192, marginBottom: 192 });
+    assert.doesNotMatch(result.meta.source, /default-alpha/);
+    assert.ok(
+        result.meta.detection.originalGradientScore > 0,
+        `expected selected anchor to have positive gradient evidence, detection=${JSON.stringify(result.meta.detection)}`
     );
 });
 
@@ -1731,6 +1848,456 @@ test('processWatermarkImageData should not over-remove the 2752x1536 canonical s
     );
 });
 
+test('processWatermarkImageData should not let located-aggressive worsen the online 48px canonical sample', async (t) => {
+    const samplePath = externalSamplePath(
+        'online-sample-2026-06-23-to-2026-06-24-max500',
+        '2026-06-24',
+        '2069619955514478592-source.png'
+    );
+    try {
+        await access(samplePath);
+    } catch {
+        t.skip('external online 48px canonical sample is not available');
+        return;
+    }
+
+    const alpha48 = calculateAlphaMap(await decodeImageDataInNode(path.resolve('src/assets/bg_48.png')));
+    const alpha96 = calculateAlphaMap(await decodeImageDataInNode(path.resolve('src/assets/bg_96.png')));
+    const alpha96NewMargin = calculateAlphaMap(await decodeImageDataInNode(path.resolve('src/assets/bg_96_20260520.png')));
+    const imageData = await decodeImageDataInNode(samplePath);
+
+    const result = processWatermarkImageData(imageData, {
+        alpha48,
+        alpha96,
+        alpha96Variants: {
+            '20260520': alpha96NewMargin
+        },
+        getAlphaMap: (size) => size === 48 ? alpha48 : interpolateAlphaMap(alpha96, 96, size)
+    });
+
+    assert.equal(result.meta.applied, true, `skipReason=${result.meta.skipReason}`);
+    assert.deepEqual(result.meta.config, { logoSize: 48, marginRight: 32, marginBottom: 32 });
+    assert.equal(
+        result.meta.alphaAdjustmentStages?.some((stage) => stage.stage === 'located-aggressive-removal'),
+        false,
+        `expected located-aggressive to be rejected, stages=${JSON.stringify(result.meta.alphaAdjustmentStages)}`
+    );
+    assert.ok(
+        result.meta.decisionPath?.alphaTrial?.rejectedStrategies?.some((event) => (
+            event.strategy === 'located-aggressive-alpha' &&
+            typeof event.blockedGate === 'string' &&
+            event.blockedGate.length > 0
+        )),
+        `expected located-aggressive rejection reason, decisionPath=${JSON.stringify(result.meta.decisionPath)}`
+    );
+    assert.equal(
+        result.meta.decisionPath?.alphaTrial?.acceptedStrategies?.some((event) => (
+            event.strategy === 'located-aggressive-alpha'
+        )),
+        false,
+        `expected no accepted located-aggressive event, decisionPath=${JSON.stringify(result.meta.decisionPath)}`
+    );
+    assert.ok(
+        result.meta.detection.processedSpatialScore < 0,
+        `expected the standard path to avoid the positive residual artifact, detection=${JSON.stringify(result.meta.detection)}`
+    );
+});
+
+test('processWatermarkImageData should rescue online 48px large-margin alpha-profile residuals', async (t) => {
+    const cases = [
+        {
+            samplePath: externalSamplePath(
+                'online-sample-2026-06-23-to-2026-06-24-max500',
+                '2026-06-23',
+                '2069367634989682688-source.png'
+            )
+        },
+        {
+            samplePath: externalSamplePath(
+                'online-sample-2026-06-23-to-2026-06-24-max500',
+                '2026-06-24',
+                '2069646097210413056-source.png'
+            )
+        }
+    ];
+    try {
+        for (const item of cases) await access(item.samplePath);
+    } catch {
+        t.skip('external online 48px large-margin samples are not available');
+        return;
+    }
+
+    const alpha48 = calculateAlphaMap(await decodeImageDataInNode(path.resolve('src/assets/bg_48.png')));
+    const alpha96 = calculateAlphaMap(await decodeImageDataInNode(path.resolve('src/assets/bg_96.png')));
+    const alpha96NewMargin = calculateAlphaMap(await decodeImageDataInNode(path.resolve('src/assets/bg_96_20260520.png')));
+
+    for (const item of cases) {
+        const imageData = await decodeImageDataInNode(item.samplePath);
+        const result = processWatermarkImageData(imageData, {
+            alpha48,
+            alpha96,
+            alpha96Variants: {
+                '20260520': alpha96NewMargin
+            },
+            getAlphaMap: (size) => size === 48 ? alpha48 : interpolateAlphaMap(alpha96, 96, size)
+        });
+
+        assert.equal(result.meta.applied, true, `skipReason=${result.meta.skipReason}`);
+        assert.deepEqual(result.meta.config, { logoSize: 48, marginRight: 96, marginBottom: 96 });
+        assert.equal(result.meta.alphaGain, 0.55);
+        assert.ok(
+            String(result.meta.source).includes('+power-profile-rescue'),
+            `expected power-profile rescue, source=${result.meta.source}`
+        );
+        assert.equal(result.meta.decisionPath?.alphaTrial?.strategy, 'known-48-power-profile');
+        assert.equal(result.meta.decisionPath?.alphaTrial?.migrationStage, 'phase2-alpha-trial');
+        assert.ok(
+            result.meta.decisionPath?.alphaTrial?.alphaShape?.stages?.includes('known-48-power-profile-rescue'),
+            `decisionPath=${JSON.stringify(result.meta.decisionPath)}`
+        );
+        assert.ok(
+            result.meta.decisionPath?.alphaTrial?.alphaShape?.profileStages?.some((stage) => (
+                stage.stage === 'known-48-power-profile-rescue' &&
+                Number.isFinite(stage.profileExponent) &&
+                Number.isFinite(stage.afterSpatialScore)
+            )),
+            `expected power profile stage details, decisionPath=${JSON.stringify(result.meta.decisionPath)}`
+        );
+        assert.equal(
+            result.meta.detection.residualVisibility?.visible,
+            false,
+            `expected no visible residual, detection=${JSON.stringify(result.meta.detection)}`
+        );
+        assert.ok(
+            Math.abs(result.meta.detection.processedSpatialScore) <= 0.16,
+            `processedSpatial=${result.meta.detection.processedSpatialScore}`
+        );
+        assert.ok(
+            result.meta.detection.processedGradientScore <= 0.12,
+            `processedGradient=${result.meta.detection.processedGradientScore}`
+        );
+    }
+});
+
+test('processWatermarkImageData should rebalance online 48px positive residual halos conservatively', async (t) => {
+    const cases = [
+        {
+            samplePath: externalSamplePath(
+                'online-sample-2026-06-23-to-2026-06-24-max500',
+                '2026-06-23',
+                '2069466327243821056-source.png'
+            ),
+            expectedConfig: { logoSize: 48, marginRight: 96, marginBottom: 96 }
+        },
+        {
+            samplePath: externalSamplePath(
+                'online-sample-2026-06-23-to-2026-06-24-max500',
+                '2026-06-24',
+                '2069593700295512064-source.png'
+            ),
+            expectedConfig: { logoSize: 48, marginRight: 32, marginBottom: 32 }
+        },
+        {
+            samplePath: externalSamplePath(
+                'online-sample-2026-06-23-to-2026-06-24-max500',
+                '2026-06-24',
+                '2069640727255584768-source.png'
+            ),
+            expectedConfig: { logoSize: 48, marginRight: 96, marginBottom: 96 }
+        },
+        {
+            samplePath: externalSamplePath(
+                'online-sample-2026-06-23-to-2026-06-24-max500',
+                '2026-06-24',
+                '2069647091088494592-source.png'
+            ),
+            expectedConfig: { logoSize: 48, marginRight: 96, marginBottom: 96 }
+        }
+    ];
+    try {
+        for (const item of cases) await access(item.samplePath);
+    } catch {
+        t.skip('external online 48px residual rebalance samples are not available');
+        return;
+    }
+
+    const alpha48 = calculateAlphaMap(await decodeImageDataInNode(path.resolve('src/assets/bg_48.png')));
+    const alpha96 = calculateAlphaMap(await decodeImageDataInNode(path.resolve('src/assets/bg_96.png')));
+    const alpha96NewMargin = calculateAlphaMap(await decodeImageDataInNode(path.resolve('src/assets/bg_96_20260520.png')));
+
+    for (const item of cases) {
+        const imageData = await decodeImageDataInNode(item.samplePath);
+        const result = processWatermarkImageData(imageData, {
+            alpha48,
+            alpha96,
+            alpha96Variants: {
+                '20260520': alpha96NewMargin
+            },
+            getAlphaMap: (size) => size === 48 ? alpha48 : interpolateAlphaMap(alpha96, 96, size)
+        });
+
+        assert.equal(result.meta.applied, true, `skipReason=${result.meta.skipReason}`);
+        assert.deepEqual(result.meta.config, item.expectedConfig);
+        assert.ok(
+            String(result.meta.source).includes('+residual-rebalance'),
+            `expected residual rebalance, source=${result.meta.source}`
+        );
+        assert.equal(result.meta.decisionPath?.alphaTrial?.strategy, 'known-48-positive-residual-rebalance');
+        assert.equal(result.meta.decisionPath?.alphaTrial?.migrationStage, 'phase2-alpha-trial');
+        assert.ok(
+            result.meta.decisionPath?.alphaTrial?.alphaShape?.stages?.includes('known-48-positive-residual-rebalance'),
+            `decisionPath=${JSON.stringify(result.meta.decisionPath)}`
+        );
+        assert.ok(
+            result.meta.decisionPath?.alphaTrial?.alphaShape?.profileStages?.some((stage) => (
+                stage.stage === 'known-48-positive-residual-rebalance' &&
+                Number.isFinite(stage.afterSpatialScore)
+            )),
+            `expected residual rebalance stage details, decisionPath=${JSON.stringify(result.meta.decisionPath)}`
+        );
+        assert.equal(
+            result.meta.detection.residualVisibility?.visibleSpatialResidual,
+            false,
+            `expected positive spatial halo to be suppressed, detection=${JSON.stringify(result.meta.detection)}`
+        );
+        assert.ok(
+            result.meta.detection.processedSpatialScore < 0.22,
+            `processedSpatial=${result.meta.detection.processedSpatialScore}`
+        );
+        assert.ok(
+            result.meta.detection.processedGradientScore <= 0.32,
+            `processedGradient=${result.meta.detection.processedGradientScore}`
+        );
+    }
+});
+
+test('processWatermarkImageData should repair online 48px small-margin residuals with a gated prior', async (t) => {
+    const cases = [
+        externalSamplePath(
+            'online-sample-2026-06-23-to-2026-06-24-max500',
+            '2026-06-23',
+            '2069451544700391424-source.jpg'
+        ),
+        externalSamplePath(
+            'online-sample-2026-06-23-to-2026-06-24-max500',
+            '2026-06-24',
+            '2069683260354465792-source.png'
+        )
+    ];
+    try {
+        for (const samplePath of cases) await access(samplePath);
+    } catch {
+        t.skip('external online 48px small-margin residual samples are not available');
+        return;
+    }
+
+    const alpha48 = calculateAlphaMap(await decodeImageDataInNode(path.resolve('src/assets/bg_48.png')));
+    const alpha96 = calculateAlphaMap(await decodeImageDataInNode(path.resolve('src/assets/bg_96.png')));
+    const alpha96NewMargin = calculateAlphaMap(await decodeImageDataInNode(path.resolve('src/assets/bg_96_20260520.png')));
+
+    for (const samplePath of cases) {
+        const imageData = await decodeImageDataInNode(samplePath);
+        const result = processWatermarkImageData(imageData, {
+            alpha48,
+            alpha96,
+            alpha96Variants: {
+                '20260520': alpha96NewMargin
+            },
+            getAlphaMap: (size) => size === 48 ? alpha48 : interpolateAlphaMap(alpha96, 96, size)
+        });
+
+        assert.equal(result.meta.applied, true, `skipReason=${result.meta.skipReason}`);
+        assert.deepEqual(result.meta.config, { logoSize: 48, marginRight: 32, marginBottom: 32 });
+        assert.ok(
+            String(result.meta.source).includes('+small-margin-prior'),
+            `expected small-margin prior repair, source=${result.meta.source}`
+        );
+        assert.ok(
+            result.meta.decisionPath?.repairTrial?.params?.some((stage) => (
+                stage.stage === 'known-48-small-margin-prior-repair' &&
+                stage.repairStrategy === 'small-margin-prior'
+            )),
+            `expected small-margin prior repair trial, decisionPath=${JSON.stringify(result.meta.decisionPath)}`
+        );
+        assert.equal(
+            result.meta.detection.residualVisibility?.visible,
+            false,
+            `expected visible residual to be suppressed, detection=${JSON.stringify(result.meta.detection)}`
+        );
+        assert.ok(
+            result.meta.detection.processedSpatialScore < 0.16,
+            `processedSpatial=${result.meta.detection.processedSpatialScore}`
+        );
+        assert.ok(
+            result.meta.detection.processedGradientScore <= 0.24,
+            `processedGradient=${result.meta.detection.processedGradientScore}`
+        );
+    }
+});
+
+test('processWatermarkImageData should rescue online 96px new-margin residuals with the variant alpha profile', async (t) => {
+    const cases = [
+        externalSamplePath(
+            'online-sample-2026-06-23-to-2026-06-24-max500',
+            '2026-06-23',
+            '2069440104052559872-source.png'
+        ),
+        externalSamplePath(
+            'online-sample-2026-06-23-to-2026-06-24-max500',
+            '2026-06-23',
+            '2069496562140057600-source.png'
+        )
+    ];
+    try {
+        for (const samplePath of cases) await access(samplePath);
+    } catch {
+        t.skip('external online 96px new-margin residual samples are not available');
+        return;
+    }
+
+    const alpha48 = calculateAlphaMap(await decodeImageDataInNode(path.resolve('src/assets/bg_48.png')));
+    const alpha96 = calculateAlphaMap(await decodeImageDataInNode(path.resolve('src/assets/bg_96.png')));
+    const alpha96NewMargin = calculateAlphaMap(await decodeImageDataInNode(path.resolve('src/assets/bg_96_20260520.png')));
+
+    for (const samplePath of cases) {
+        const imageData = await decodeImageDataInNode(samplePath);
+        const result = processWatermarkImageData(imageData, {
+            alpha48,
+            alpha96,
+            alpha96Variants: {
+                '20260520': alpha96NewMargin
+            },
+            getAlphaMap: (size) => size === 48
+                ? alpha48
+                : (size === '96-20260520' ? alpha96NewMargin : interpolateAlphaMap(alpha96, 96, size))
+        });
+
+        assert.equal(result.meta.applied, true, `skipReason=${result.meta.skipReason}`);
+        assert.deepEqual(result.meta.config, {
+            logoSize: 96,
+            marginRight: 192,
+            marginBottom: 192,
+            alphaVariant: '20260520'
+        });
+        assert.ok(
+            String(result.meta.source).includes('+new-margin-variant'),
+            `expected new-margin variant rescue, source=${result.meta.source}`
+        );
+        assert.ok(
+            result.meta.decisionPath?.alphaTrial?.acceptedStrategies?.some((event) => (
+                event.strategy === 'located-aggressive-alpha'
+            )),
+            `expected accepted located-aggressive event, decisionPath=${JSON.stringify(result.meta.decisionPath)}`
+        );
+        assert.equal(result.meta.decisionPath?.alphaTrial?.strategy, 'new-margin-96-variant');
+        assert.equal(result.meta.decisionPath?.alphaTrial?.migrationStage, 'phase2-alpha-trial');
+        assert.equal(result.meta.decisionPath?.alphaTrial?.alphaShape?.variant, '20260520');
+        assert.ok(
+            result.meta.decisionPath?.alphaTrial?.alphaShape?.stages?.includes('new-margin-96-variant-rescue'),
+            `decisionPath=${JSON.stringify(result.meta.decisionPath)}`
+        );
+        assert.equal(
+            result.meta.detection.residualVisibility?.visible,
+            false,
+            `expected visible residual to be suppressed, detection=${JSON.stringify(result.meta.detection)}`
+        );
+        assert.ok(
+            Math.abs(result.meta.detection.processedSpatialScore) <= 0.12,
+            `processedSpatial=${result.meta.detection.processedSpatialScore}`
+        );
+        assert.ok(
+            result.meta.detection.processedGradientScore <= 0.2,
+            `processedGradient=${result.meta.detection.processedGradientScore}`
+        );
+    }
+});
+
+test('processWatermarkImageData should repair small located online residuals with a gated prior', async (t) => {
+    const cases = [
+        {
+            samplePath: externalSamplePath(
+                'online-sample-2026-06-23-to-2026-06-24-max500',
+                '2026-06-23',
+                '2069527813160964096-source.jpg'
+            ),
+            expectedConfig: { logoSize: 36, marginRight: 71, marginBottom: 71 }
+        },
+        {
+            samplePath: externalSamplePath(
+                'online-sample-2026-06-23-to-2026-06-24-max500',
+                '2026-06-24',
+                '2069581324829593600-source.jpg'
+            ),
+            expectedConfig: { logoSize: 43, marginRight: 85, marginBottom: 85 }
+        },
+        {
+            samplePath: externalSamplePath(
+                'online-sample-2026-06-23-to-2026-06-24-max500',
+                '2026-06-23',
+                '2069537241264295936-source.png'
+            ),
+            expectedConfig: { logoSize: 48, marginRight: 96, marginBottom: 96 }
+        }
+    ];
+    try {
+        for (const item of cases) {
+            await access(item.samplePath);
+        }
+    } catch {
+        t.skip('external small located online residual samples are not available');
+        return;
+    }
+
+    const alpha48 = calculateAlphaMap(await decodeImageDataInNode(path.resolve('src/assets/bg_48.png')));
+    const alpha96 = calculateAlphaMap(await decodeImageDataInNode(path.resolve('src/assets/bg_96.png')));
+    const alpha96NewMargin = calculateAlphaMap(await decodeImageDataInNode(path.resolve('src/assets/bg_96_20260520.png')));
+    const alpha36V2 = getEmbeddedAlphaMap('36-v2');
+
+    for (const item of cases) {
+        const imageData = await decodeImageDataInNode(item.samplePath);
+        const result = processWatermarkImageData(imageData, {
+            alpha48,
+            alpha96,
+            alpha96Variants: {
+                '20260520': alpha96NewMargin
+            },
+            getAlphaMap: (size) => {
+                if (size === 48) return alpha48;
+                if (size === '36-v2') return alpha36V2;
+                if (size === '96-20260520') return alpha96NewMargin;
+                return interpolateAlphaMap(alpha96, 96, size);
+            }
+        });
+
+        assert.equal(result.meta.applied, true, `skipReason=${result.meta.skipReason}`);
+        assert.deepEqual(result.meta.config, item.expectedConfig);
+        assert.ok(
+            String(result.meta.source).includes('+small-located-prior'),
+            `expected small located prior repair, source=${result.meta.source}`
+        );
+        assert.ok(
+            result.meta.decisionPath?.repairTrial?.params?.some((stage) => (
+                stage.stage === 'small-located-prior-repair' &&
+                stage.repairStrategy === 'small-located-prior'
+            )),
+            `expected small located prior repair trial, decisionPath=${JSON.stringify(result.meta.decisionPath)}`
+        );
+        assert.equal(
+            result.meta.detection.residualVisibility?.visible,
+            false,
+            `expected visible residual to be suppressed, detection=${JSON.stringify(result.meta.detection)}`
+        );
+        assert.ok(
+            Math.abs(result.meta.detection.processedSpatialScore) <= 0.16,
+            `processedSpatial=${result.meta.detection.processedSpatialScore}`
+        );
+        assert.ok(
+            result.meta.detection.processedGradientScore <= 0.24,
+            `processedGradient=${result.meta.detection.processedGradientScore}`
+        );
+    }
+});
+
 test('processWatermarkImageData should allow strong 2752x1536 new-margin alpha evidence through flat-background hard reject', async (t) => {
     const samplePath = externalSamplePath('2026-06-09/2064208514779189248-source.png');
     try {
@@ -1769,6 +2336,13 @@ test('processWatermarkImageData should allow strong 2752x1536 new-margin alpha e
     assert.ok(
         result.meta.alphaAdjustmentStages?.some((stage) => stage.stage === 'new-margin-96-flat-background-fill'),
         `expected new-margin flat-fill stage, stages=${JSON.stringify(result.meta.alphaAdjustmentStages)}`
+    );
+    assert.ok(
+        result.meta.decisionPath?.repairTrial?.params?.some((stage) => (
+            stage.stage === 'new-margin-96-flat-background-fill' &&
+            stage.repairStrategy === 'new-margin-96-flat-fill'
+        )),
+        `expected new-margin flat-fill repair trial, decisionPath=${JSON.stringify(result.meta.decisionPath)}`
     );
     assert.ok(
         Math.abs(result.meta.detection.processedSpatialScore) <= 0.03,
@@ -1888,6 +2462,13 @@ test('processWatermarkImageData should repair smooth off-catalog located residua
     assert.ok(
         String(result.meta.source).includes('+smooth-prior'),
         `expected smooth prior cleanup, source=${result.meta.source}, stages=${JSON.stringify(result.meta.alphaAdjustmentStages)}`
+    );
+    assert.ok(
+        result.meta.decisionPath?.repairTrial?.params?.some((stage) => (
+            stage.stage === 'smooth-located-estimated-prior' &&
+            stage.repairStrategy === 'smooth-located-prior'
+        )),
+        `expected smooth located prior repair trial, decisionPath=${JSON.stringify(result.meta.decisionPath)}`
     );
     assert.ok(
         Math.abs(result.meta.detection.processedSpatialScore) <= 0.08,

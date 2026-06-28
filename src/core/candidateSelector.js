@@ -29,6 +29,12 @@ import {
     shouldEarlyAccept
 } from './watermarkScoring.js';
 import {
+    arbitrateCandidateByEvaluation,
+    createCandidateEvaluation,
+    hasSafeDefaultAlphaNewMarginResidual,
+    isNewMarginAlphaVariantTrial
+} from './candidateEvaluation.js';
+import {
     matchOfficialGeminiImageSize,
     resolveGeminiWatermarkSearchCatalogEntries
 } from './geminiSizeCatalog.js';
@@ -887,10 +893,7 @@ export function evaluateRestorationCandidate({
         originalScores.spatialScore >= DARK_POLARITY_CATALOG_MIN_ORIGINAL_SPATIAL ||
         originalScores.gradientScore >= DARK_POLARITY_CATALOG_MIN_ORIGINAL_GRADIENT ||
         texturePenalty <= DARK_POLARITY_CATALOG_MAX_TEXTURE_FOR_WEAK_EVIDENCE;
-    const accepted =
-        originalEvidenceAllowed &&
-        catalogEvidenceAllowed &&
-        darkPolarityCatalogEvidenceAllowed &&
+    const baseValidationAccepted =
         (
             hardRejectAllowed ||
             conservativeCatalogHardRejectAllowed ||
@@ -935,6 +938,23 @@ export function evaluateRestorationCandidate({
         nearBlackIncrease,
         texturePenalty
     });
+    const evaluation = createCandidateEvaluation({
+        source,
+        config,
+        provenance: mergedProvenance,
+        originalScores,
+        processedScores,
+        improvement,
+        residual,
+        damage,
+        gates: {
+            originalEvidenceAllowed,
+            catalogEvidenceAllowed,
+            darkPolarityCatalogEvidenceAllowed,
+            baseValidationAccepted
+        }
+    });
+    const accepted = evaluation.eligible;
     const rankingKey = buildRankingKey({
         sourcePriority: resolvedSourcePriority,
         originalEvidenceTier: originalEvidence.tier,
@@ -981,6 +1001,7 @@ export function evaluateRestorationCandidate({
         originalEvidence,
         residual,
         damage,
+        evaluation,
         balancedVisual,
         validationCost: balancedVisual.score
     };
@@ -1120,6 +1141,8 @@ function compareSameAnchorCandidateRanking(currentBest, candidate) {
 export function pickBetterCandidate(currentBest, candidate, minCostDelta = 0.005) {
     if (!candidate?.accepted) return currentBest;
     if (!currentBest) return candidate;
+    const evaluationDecision = arbitrateCandidateByEvaluation(currentBest, candidate);
+    if (evaluationDecision) return evaluationDecision;
     if (shouldPreserveCatalogOriginalSignal(currentBest, candidate)) {
         return currentBest;
     }
@@ -2134,13 +2157,6 @@ function searchFixedCoreStrongStandardAlphaGain({
     return bestCandidate;
 }
 
-function isNewMarginAlphaVariantTrial(candidate) {
-    return candidate?.config?.logoSize === 96 &&
-        candidate.config.marginRight === 192 &&
-        candidate.config.marginBottom === 192 &&
-        candidate.config.alphaVariant === '20260520';
-}
-
 function createDefaultAlphaRescueProvenance(provenance) {
     const {
         alphaVariant,
@@ -2167,6 +2183,7 @@ function searchDefaultAlphaNewMarginRescue({
 
     for (const seedCandidate of standardTrials) {
         if (!isNewMarginAlphaVariantTrial(seedCandidate)) continue;
+        if (seedCandidate.provenance?.darkPolarity === true) continue;
 
         const config = {
             logoSize: 96,
@@ -2193,6 +2210,7 @@ function searchDefaultAlphaNewMarginRescue({
                 includeImageData: false
             });
             if (!candidate?.accepted) continue;
+            if (!hasSafeDefaultAlphaNewMarginResidual(candidate)) continue;
 
             bestCandidate = pickBetterCandidate(bestCandidate, candidate, 0.002);
         }
@@ -2758,17 +2776,17 @@ export function selectInitialCandidate({
         alphaGainCandidates
     }));
 
-    if (!baseCandidate) {
-        const defaultAlphaNewMarginRescue = searchDefaultAlphaNewMarginRescue({
-            originalImageData,
-            standardTrials,
-            alpha96,
-            alphaGainCandidates
-        });
-        if (defaultAlphaNewMarginRescue) {
-            baseCandidate = defaultAlphaNewMarginRescue;
-            baseDecisionTier = 'validated-match';
-        }
+    const defaultAlphaNewMarginRescue = searchDefaultAlphaNewMarginRescue({
+        originalImageData,
+        standardTrials,
+        alpha96,
+        alphaGainCandidates
+    });
+    if (defaultAlphaNewMarginRescue) {
+        ({
+            baseCandidate,
+            baseDecisionTier
+        } = promoteBaseCandidate(baseCandidate, baseDecisionTier, defaultAlphaNewMarginRescue));
     }
 
     if (allowAutomaticSearch) {

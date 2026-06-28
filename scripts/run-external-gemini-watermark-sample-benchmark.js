@@ -354,7 +354,8 @@ async function benchmarkSample({ sampleRoot, baselinePath, outputPath }) {
             originalGradientScore: roundNumber(meta.detection?.originalGradientScore),
             suppressionGain: roundNumber(meta.detection?.suppressionGain),
             adaptiveConfidence: roundNumber(meta.detection?.adaptiveConfidence),
-            residualVisibility: meta.detection?.residualVisibility ?? null
+            residualVisibility: meta.detection?.residualVisibility ?? null,
+            decisionPath: meta.decisionPath ?? null
         };
         record.classification = classifyExternalBenchmarkCase(record);
         results.push(record);
@@ -382,6 +383,7 @@ async function benchmarkSample({ sampleRoot, baselinePath, outputPath }) {
             originalGradientScore: record.originalGradientScore,
             suppressionGain: record.suppressionGain,
             residualVisibility: record.residualVisibility,
+            decisionPath: record.decisionPath,
             filePath: record.filePath
         }));
 

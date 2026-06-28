@@ -1239,6 +1239,7 @@ async function buildBenchmarkReport({
             suppressionGain: toFiniteNumber(processed.meta.detection?.suppressionGain),
             adaptiveConfidence: toFiniteNumber(processed.meta.detection?.adaptiveConfidence),
             residualVisibility: processed.meta.detection?.residualVisibility ?? null,
+            decisionPath: processed.meta.decisionPath ?? null,
             changedRatio: regionDelta.changedRatio,
             avgAbsoluteDeltaPerChannel: regionDelta.avgAbsoluteDeltaPerChannel,
             selectionDebug: processed.meta.selectionDebug ?? null,

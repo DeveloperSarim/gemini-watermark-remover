@@ -32,6 +32,7 @@ pnpm-debug.log*
 .vite/
 .npm-cache-local/
 .npm-tmp-cache/
+.pnpm-store/
 .tmp-*
 tmp/
 temp/

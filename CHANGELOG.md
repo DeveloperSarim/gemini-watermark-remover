@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.28 - 2026-06-28
+
+### Watermark Removal
+
+- Refactored the Gemini image pipeline into explicit detection, alpha, repair, and evaluation layers while preserving the current production behavior.
+- Added evidence-gated decision-path tracing so accepted and skipped watermark candidates can be audited without changing the pixel path.
+
+### Quality
+
+- Re-verified the 2026-06-23 to 2026-06-24 online Gemini sample set at `978/1000 = 97.80%` pass rate with no newly failing samples against the Phase 5 baseline.
+- Added strict quality monitoring, visual review packs, alpha ablation reports, and GitHub v1.0.27 comparison sheets for investigating perfect-rate changes.
+- Confirmed the observed `perfect strict` drop is primarily a stricter damage/texture metric coverage change, not a visible regression against GitHub v1.0.27 outputs.
+
 ## 1.0.27 - 2026-06-20
 
 ### Video

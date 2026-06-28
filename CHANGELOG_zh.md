@@ -1,5 +1,18 @@
 # 更新日志
 
+## 1.0.28 - 2026-06-28
+
+### 水印移除
+
+- 将 Gemini 图片去水印链路重构为明确的 detection、alpha、repair、evaluation 四层，同时保持当前生产像素行为稳定。
+- 新增带证据的 decision-path trace，让已接受和已跳过的水印候选都能被审计，而不改变生产处理结果。
+
+### 质量
+
+- 重新验证 2026-06-23 到 2026-06-24 的线上 Gemini 抽样集，Phase 5 基线下 `978/1000 = 97.80%` 通过，且没有新增失败样本。
+- 新增 strict quality monitor、视觉复核包、alpha 消融报告，以及与 GitHub v1.0.27 的 perfectLost 对照图，用于追踪完美率变化。
+- 确认 observed `perfect strict` 下降主要来自 damage / texture 指标覆盖变严，而不是相对 GitHub v1.0.27 输出的可见回归。
+
 ## 1.0.27 - 2026-06-20
 
 ### 视频
